@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TravIA — comparateur de trajets voiture, train, avion</title>
+<meta name="description" content="Simulateur d'itineraires multimodaux : compare la voiture, le train et l'avion sur un meme trajet, avec points de passage, horaires et prix par compagnie.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f7f5f1'/%3E%3Cpath d='M6 22h20M6 22l5-12M16 10v12M26 22l-5-12' stroke='%232f4858' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap masthead__inner">
+    <div class="brand">
+      <span class="brand__name">TravIA</span>
+      <span class="brand__line">Comparateur d'itineraires voiture, train et avion</span>
+    </div>
+    <nav class="masthead__nav">
+      <a href="#methode">Methode</a>
+      <button type="button" id="themeToggle" class="linkish" aria-label="Changer de theme">Theme</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap layout">
+
+  <form class="panel" id="tripForm" autocomplete="off">
+    <h2 class="panel__title">Itineraire</h2>
+
+    <div id="stops" class="stops"></div>
+
+    <div class="stops__actions">
+      <button type="button" class="btn btn--ghost" id="addStop">Ajouter une etape</button>
+      <button type="button" class="btn btn--ghost" id="reverse">Inverser</button>
+    </div>
+
+    <div class="field-grid">
+      <label class="field">
+        <span class="field__label">Date de depart</span>
+        <input type="date" id="date" required>
+      </label>
+      <label class="field">
+        <span class="field__label">Heure</span>
+        <input type="time" id="time" value="08:00" required>
+      </label>
+      <label class="field">
+        <span class="field__label">Voyageurs</span>
+        <input type="number" id="passengers" min="1" max="9" value="1">
+      </label>
+    </div>
+
+    <fieldset class="modes">
+      <legend class="field__label">Modes compares</legend>
+      <label class="mode-toggle" data-mode="car">
+        <input type="checkbox" id="modeCar" checked>
+        <span class="mode-toggle__box"><span class="mode-toggle__key" aria-hidden="true">VO</span>Voiture</span>
+      </label>
+      <label class="mode-toggle" data-mode="train">
+        <input type="checkbox" id="modeTrain" checked>
+        <span class="mode-toggle__box"><span class="mode-toggle__key" aria-hidden="true">TR</span>Train</span>
+      </label>
+      <label class="mode-toggle" data-mode="plane">
+        <input type="checkbox" id="modePlane" checked>
+        <span class="mode-toggle__box"><span class="mode-toggle__key" aria-hidden="true">AV</span>Avion</span>
+      </label>
+    </fieldset>
+
+    <details class="opts">
+      <summary>Hypotheses voiture</summary>
+      <div class="field-grid field-grid--2">
+        <label class="field">
+          <span class="field__label">Motorisation</span>
+          <select id="fuel">
+            <option value="essence">Essence</option>
+            <option value="diesel">Diesel</option>
+            <option value="hybride">Hybride</option>
+            <option value="electrique">Electrique</option>
+          </select>
+        </label>
+        <label class="field" id="consField">
+          <span class="field__label">Consommation (L/100 km)</span>
+          <input type="number" id="consumption" step="0.1" min="1" max="25" value="6.2">
+        </label>
+        <label class="field" id="priceField">
+          <span class="field__label">Prix du carburant (EUR/L)</span>
+          <input type="number" id="fuelPrice" step="0.01" min="0.5" max="4" value="1.79">
+        </label>
+        <label class="field" id="kwhField" hidden>
+          <span class="field__label">Consommation (kWh/100 km)</span>
+          <input type="number" id="kwhPer100" step="0.5" min="8" max="40" value="17.5">
+        </label>
+        <label class="field" id="kwhPriceField" hidden>
+          <span class="field__label">Prix de la recharge (EUR/kWh)</span>
+          <input type="number" id="kwhPrice" step="0.01" min="0.05" max="1" value="0.32">
+        </label>
+        <label class="field">
+          <span class="field__label">Personnes dans le vehicule</span>
+          <input type="number" id="occupants" min="1" max="9" value="1">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="tolls" checked> Inclure les peages</label>
+      <label class="check"><input type="checkbox" id="includeWear"> Inclure l'usure et l'entretien (0,06 EUR/km)</label>
+    </details>
+
+    <details class="opts">
+      <summary>Hypotheses train</summary>
+      <div class="field-grid field-grid--2">
+        <label class="field">
+          <span class="field__label">Classe</span>
+          <select id="railClass">
+            <option value="2de">Seconde</option>
+            <option value="1re">Premiere</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">Carte de reduction</span>
+          <select id="railCard"></select>
+        </label>
+        <label class="field">
+          <span class="field__label">Acces a la gare (min)</span>
+          <input type="number" id="railTransferMin" min="0" max="120" value="20">
+        </label>
+      </div>
+    </details>
+
+    <details class="opts">
+      <summary>Hypotheses avion</summary>
+      <div class="field-grid field-grid--2">
+        <label class="field">
+          <span class="field__label">Enregistrement et surete (min)</span>
+          <input type="number" id="checkinMin" min="30" max="240" value="90">
+        </label>
+        <label class="field">
+          <span class="field__label">Debarquement et bagages (min)</span>
+          <input type="number" id="disembarkMin" min="10" max="120" value="30">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="hold"> Bagage en soute</label>
+    </details>
+
+    <label class="check check--live"><input type="checkbox" id="useLive" checked> Interroger OpenStreetMap et OSRM pour les distances routieres reelles</label>
+
+    <button type="submit" class="btn btn--primary btn--wide" id="compute">Comparer les trajets</button>
+    <p class="form-note" id="formNote"></p>
+  </form>
+
+  <section class="results" id="results" aria-live="polite">
+    <div class="empty">
+      <h2>Comparer un trajet</h2>
+      <p>Renseignez un depart, une arrivee et autant d'etapes que necessaire. TravIA calcule pour chaque segment la voiture, le train et l'avion, puis detaille les departs et les tarifs des compagnies qui exploitent la relation.</p>
+      <p class="empty__hint">Exemples : Paris - Marseille, Lyon - Barcelone via Montpellier, Nantes - Berlin.</p>
+    </div>
+  </section>
+
+</main>
+
+<section class="wrap method" id="methode">
+  <h2>Methode et sources</h2>
+  <div class="method__grid">
+    <div>
+      <h3>Ce qui est mesure</h3>
+      <p>Lorsque la connexion aux services ouverts est active, les distances et les durees routieres proviennent d'<strong>OSRM</strong>, calculees sur le graphe OpenStreetMap en respectant l'ordre des points de passage. Les lieux absents du referentiel sont localises par <strong>Nominatim</strong>. En cas d'indisponibilite, le calcul bascule sur le modele interne et le resultat est signale comme estime.</p>
+    </div>
+    <div>
+      <h3>Ce qui est estime</h3>
+      <p>Aucun distributeur ne publie librement ses tarifs ni ses horaires. Les prix et les horaires ferroviaires et aeriens sont donc <strong>reconstitues par un modele</strong> : distance, vitesse commerciale du corridor, grille tarifaire de l'operateur, delai avant le depart, jour, heure et saison. Ce sont des ordres de grandeur destines a la comparaison, pas des offres reservables.</p>
+    </div>
+    <div>
+      <h3>Calage du modele</h3>
+      <p>Les vitesses ferroviaires sont calees par corridor sur les horaires publies, les temps de parcours routiers sur les temps observes hors incident, et les grilles tarifaires sur les prix affiches par les operateurs. Confronte a dix-neuf relations europeennes de reference, le modele ferroviaire s'ecarte en moyenne de 16 % des horaires reels ; l'ecart est plus marque sur les relations courtes empruntant des lignes classiques.</p>
+    </div>
+    <div>
+      <h3>Emissions</h3>
+      <p>Les emissions sont exprimees en kilogrammes de CO<sub>2</sub> equivalent par voyageur : voiture selon la motorisation et le nombre d'occupants, train selon la nature du materiel, avion selon la distance. Elles ne comprennent pas les effets non-CO<sub>2</sub> de l'aviation.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer__inner">
+    <p>TravIA — outil de simulation. Les tarifs et horaires sont des estimations, a verifier aupres des operateurs avant reservation.</p>
+    <p>Donnees geographiques : OpenStreetMap et ses contributeurs. Calcul routier : projet OSRM.</p>
+  </div>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/engine.js"></script>
+<script src="assets/providers.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
