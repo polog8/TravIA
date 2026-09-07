@@ -51,6 +51,18 @@
       </label>
     </div>
 
+    <label class="check"><input type="checkbox" id="roundTrip"> Ajouter un retour</label>
+    <div class="field-grid field-grid--2" id="returnFields" hidden>
+      <label class="field">
+        <span class="field__label">Date de retour</span>
+        <input type="date" id="returnDate">
+      </label>
+      <label class="field">
+        <span class="field__label">Heure</span>
+        <input type="time" id="returnTime" value="17:00">
+      </label>
+    </div>
+
     <fieldset class="modes">
       <legend class="field__label">Modes compares</legend>
       <label class="mode-toggle" data-mode="car">
@@ -65,6 +77,7 @@
         <input type="checkbox" id="modePlane" checked>
         <span class="mode-toggle__box"><span class="mode-toggle__key" aria-hidden="true">AV</span>Avion</span>
       </label>
+      <button type="button" class="mode-any" id="modeAny">Peu importe</button>
     </fieldset>
 
     <details class="opts">
@@ -144,21 +157,51 @@
 
     <button type="submit" class="btn btn--primary btn--wide" id="compute">Comparer les trajets</button>
     <p class="form-note" id="formNote"></p>
+
+    <figure class="map" id="map" hidden>
+      <div class="map__canvas" id="mapCanvas"></div>
+      <figcaption class="map__legend" id="mapLegend"></figcaption>
+    </figure>
   </form>
 
-  <section class="results" id="results" aria-live="polite">
-    <div class="empty">
-      <h2>Comparer un trajet</h2>
-      <p>Renseignez un depart, une arrivee et autant d'etapes que necessaire. TravIA calcule pour chaque segment la voiture, le train et l'avion, puis detaille les departs et les tarifs des compagnies qui exploitent la relation.</p>
-      <p class="empty__hint">Exemples : Paris - Marseille, Lyon - Barcelone via Montpellier, Nantes - Berlin.</p>
-    </div>
-  </section>
+  <div class="results-col">
+    <nav class="tabs" role="tablist" aria-label="Vues des resultats">
+      <button type="button" class="vtab" id="tabCompare" role="tab" aria-selected="true" aria-controls="results">
+        Comparateur
+        <span class="vtab__sub">Chaque mode, segment par segment</span>
+      </button>
+      <button type="button" class="vtab" id="tabBest" role="tab" aria-selected="false" aria-controls="best">
+        Meilleur itineraire
+        <span class="vtab__sub">Tous modes, correspondances comprises</span>
+      </button>
+    </nav>
+
+    <section class="results" id="results" role="tabpanel" aria-labelledby="tabCompare" aria-live="polite">
+      <div class="empty">
+        <h2>Comparer un trajet</h2>
+        <p>Renseignez un depart, une arrivee et autant d'etapes que necessaire. TravIA calcule pour chaque segment la voiture, le train et l'avion, puis detaille les departs et les tarifs des compagnies qui exploitent la relation.</p>
+        <p class="empty__hint">Exemples : Paris - Marseille, Lyon - Barcelone via Montpellier, Nantes - Berlin.</p>
+      </div>
+    </section>
+
+    <section class="results" id="best" role="tabpanel" aria-labelledby="tabBest" hidden aria-live="polite">
+      <div class="empty">
+        <h2>Meilleur itineraire</h2>
+        <p>Cette vue cherche le meilleur trajet entre deux lieux sans presupposer le mode : voiture, train, avion, et leurs combinaisons avec une correspondance intermediaire. Les resultats se classent par duree, par prix ou par emissions.</p>
+        <p class="empty__hint">Utile quand la relation n'a pas de liaison directe evidente : Nantes - Berlin, Bordeaux - Geneve.</p>
+      </div>
+    </section>
+  </div>
 
 </main>
 
 <section class="wrap method" id="methode">
   <h2>Methode et sources</h2>
   <div class="method__grid">
+    <div>
+      <h3>Les deux vues</h3>
+      <p>Le <strong>comparateur</strong> impose l'itineraire que vous decrivez et met les trois modes en regard, segment par segment. La vue <strong>meilleur itineraire</strong> ne presuppose rien : elle teste chaque mode, puis l'insertion d'un point de correspondance intermediaire, et classe les combinaisons obtenues par duree, par prix ou par emissions.</p>
+    </div>
     <div>
       <h3>Ce qui est mesure</h3>
       <p>Lorsque la connexion aux services ouverts est active, les distances et les durees routieres proviennent d'<strong>OSRM</strong>, calculees sur le graphe OpenStreetMap en respectant l'ordre des points de passage. Les lieux absents du referentiel sont localises par <strong>Nominatim</strong>. En cas d'indisponibilite, le calcul bascule sur le modele interne et le resultat est signale comme estime.</p>
@@ -170,6 +213,10 @@
     <div>
       <h3>Calage du modele</h3>
       <p>Les vitesses ferroviaires sont calees par corridor sur les horaires publies, les temps de parcours routiers sur les temps observes hors incident, et les grilles tarifaires sur les prix affiches par les operateurs. Confronte a dix-neuf relations europeennes de reference, le modele ferroviaire s'ecarte en moyenne de 16 % des horaires reels ; l'ecart est plus marque sur les relations courtes empruntant des lignes classiques.</p>
+    </div>
+    <div>
+      <h3>Carte</h3>
+      <p>La carte est un <strong>trace schematique</strong> : elle situe les points de l'itineraire et la couleur de chaque segment, en s'appuyant sur les villes du referentiel comme reperes. Ce n'est pas un fond de carte, et le trace routier n'est pas le detail de la route suivie.</p>
     </div>
     <div>
       <h3>Emissions</h3>
@@ -187,6 +234,8 @@
 
 <script src="assets/data.js"></script>
 <script src="assets/engine.js"></script>
+<script src="assets/router.js"></script>
+<script src="assets/map.js"></script>
 <script src="assets/providers.js"></script>
 <script src="assets/app.js"></script>
 </body>

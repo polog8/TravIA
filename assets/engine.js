@@ -136,9 +136,10 @@
     return ds.slice(0, 3);
   }
 
-  /* Plus court chemin, en kilometres, ou null si les deux points ne sont pas
-     relies par voie terrestre. */
-  function networkPathKm(from, to) {
+  /* Plus court chemin dans le graphe : longueur en kilometres et suite des
+     villes traversees. Renvoie null si les deux points ne sont pas relies par
+     voie terrestre. Le trace sert aussi a dessiner la carte. */
+  function networkPath(from, to) {
     var key = from.id + '>' + to.id;
     if (PATH_CACHE[key] !== undefined) return PATH_CACHE[key];
     buildNetwork();
@@ -147,26 +148,71 @@
     if (!starts.length || !Object.keys(ends).length) return (PATH_CACHE[key] = null);
 
     var n = NODES.length;
-    var dist = new Array(n), seen = new Array(n);
-    for (var i = 0; i < n; i++) { dist[i] = Infinity; seen[i] = false; }
-    starts.forEach(function (g) { dist[g.j] = Math.min(dist[g.j], g.d); });
+    var dist = new Array(n), seen = new Array(n), prev = new Array(n);
+    for (var i = 0; i < n; i++) { dist[i] = Infinity; seen[i] = false; prev[i] = -1; }
+    starts.forEach(function (g) { if (g.d < dist[g.j]) dist[g.j] = g.d; });
 
-    var best = Infinity;
+    var best = Infinity, bestEnd = -1;
     for (var step = 0; step < n; step++) {
       var u = -1, bd = Infinity;
       for (var k = 0; k < n; k++) if (!seen[k] && dist[k] < bd) { bd = dist[k]; u = k; }
       if (u < 0) break;
       seen[u] = true;
-      if (ends[u] !== undefined) best = Math.min(best, dist[u] + ends[u]);
+      if (ends[u] !== undefined && dist[u] + ends[u] < best) { best = dist[u] + ends[u]; bestEnd = u; }
       if (bd > best) break;
       ADJ[u].forEach(function (e) {
         var nd = dist[u] + e.d;
-        if (nd < dist[e.j]) dist[e.j] = nd;
+        if (nd < dist[e.j]) { dist[e.j] = nd; prev[e.j] = u; }
       });
     }
-    var out = isFinite(best) ? best : null;
+    if (!isFinite(best)) return (PATH_CACHE[key] = null);
+
+    var nodes = [], cur = bestEnd, guard = 0;
+    while (cur >= 0 && guard++ < n) { nodes.unshift(NODES[cur]); cur = prev[cur]; }
+    var out = { km: best, nodes: nodes };
     PATH_CACHE[key] = out;
     return out;
+  }
+
+  function networkPathKm(from, to) {
+    var p = networkPath(from, to);
+    return p ? p.km : null;
+  }
+
+  /* ------------------------------------------- ancrage gare ou aeroport -----
+     Quand l'utilisateur choisit explicitement une gare ou un aeroport comme
+     point de depart ou d'arrivee, les temps d'acces changent : il est deja sur
+     place pour ce mode, et doit rejoindre l'autre. */
+  function anchorPlace(place, anchor) {
+    if (!anchor || anchor.type === 'city') return place;
+    var out = {};
+    for (var k in place) if (Object.prototype.hasOwnProperty.call(place, k)) out[k] = place[k];
+
+    if (anchor.type === 'rail' && place.rail) {
+      out.name = place.rail.station;
+      out.anchor = 'rail';
+      out.rail = { station: place.rail.station, hsr: place.rail.hsr, accessMin: 5, host: place.rail.host };
+      out.air = place.air.map(function (a) {
+        return { iata: a.iata, name: a.name, transferMin: a.transferMin + 20, kind: a.kind };
+      });
+      return out;
+    }
+    if (anchor.type === 'air') {
+      var chosen = place.air.filter(function (a) { return a.iata === anchor.iata; })[0] || place.air[0];
+      if (!chosen) return place;
+      out.name = chosen.name + ' (' + chosen.iata + ')';
+      out.anchor = 'air';
+      out.air = [{ iata: chosen.iata, name: chosen.name, transferMin: 15, kind: chosen.kind }];
+      if (place.rail) {
+        out.rail = {
+          station: place.rail.station, hsr: place.rail.hsr,
+          accessMin: (place.rail.accessMin || 20) + Math.round(chosen.transferMin * 0.8),
+          host: place.rail.host
+        };
+      }
+      return out;
+    }
+    return place;
   }
 
   /* -------------------------------------------------- facteurs tarifaires --- */
@@ -465,6 +511,9 @@
         if (op.night) price = Math.max(price, 49);
         price = Math.max(price, op.lowcost ? 10 : 12);
         var duration = Math.round(rideMin * (0.97 + rand(seedKey + '|d' + i) * 0.09));
+        var arrivee = new Date(d.getTime() + duration * MIN);
+        /* un service de jour n'arrive pas au milieu de la nuit */
+        if (!op.night && arrivee.getHours() < 5) return;
         offers.push({
           mode: 'train',
           operator: op.name,
@@ -472,7 +521,7 @@
           url: op.url,
           klass: opts.railClass === '1re' ? (op.classes[1] || op.classes[0]) : op.classes[0],
           depart: d,
-          arrivee: new Date(d.getTime() + duration * MIN),
+          arrivee: arrivee,
           durationMin: duration,
           transfers: transfers,
           night: !!op.night,
@@ -490,7 +539,7 @@
     });
 
     if (!offers.length) {
-      return { available: false, reason: 'Aucun operateur ferroviaire identifie sur cette relation.' };
+      return { available: false, reason: 'Aucun depart exploitable sur cette relation apres l heure demandee.' };
     }
     offers.sort(function (a, b) { return a.depart - b.depart; });
     return { available: true, mode: 'train', source: 'estime', distanceKm: round(km, 0), offers: offers.slice(0, 24) };
@@ -583,6 +632,9 @@
         var bag = opts.hold ? (al.bag || 0) : 0;
         price = Math.max(price, al.type === 'low' ? 14 : 39) + bag;
         var duration = Math.round(airMin * (0.97 + rand(seedKey + '|d' + i) * 0.08));
+        var arrivee = new Date(d.getTime() + duration * MIN);
+        /* couvre-feu nocturne sur la plupart des aeroports */
+        if (arrivee.getHours() < 5 && flightKm < 3000) return;
 
         var accessMin = apA.transferMin + opts.checkinMin;
         var egressMin = opts.disembarkMin + apB.transferMin;
@@ -593,7 +645,7 @@
           code: al.code + ' ' + (1000 + Math.floor(rand(seedKey + '|n' + i) * 8000)),
           url: al.url,
           depart: d,
-          arrivee: new Date(d.getTime() + duration * MIN),
+          arrivee: arrivee,
           durationMin: duration,
           doorToDoorMin: duration + accessMin + egressMin,
           transfers: serve.stops,
@@ -745,6 +797,9 @@
 
   T.engine = {
     buildCustomPlace: buildCustomPlace,
+    networkPath: networkPath,
+    anchorPlace: anchorPlace,
+    landLink: landLink,
     haversine: haversine,
     rand: rand,
     hash: hash,

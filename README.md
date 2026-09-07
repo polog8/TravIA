@@ -8,17 +8,35 @@ qui exploitent la relation, et additionne l'itinéraire composé que l'on retien
 Application entièrement statique : HTML, CSS et JavaScript sans dépendance ni
 étape de construction.
 
-## Ce que fait l'outil
+## Deux vues
 
-- **Comparaison des modes** sur l'itinéraire complet : durée porte à porte, prix
-  le plus bas par voyageur, émissions de CO₂, disponibilité.
-- **Points de passage** : ajout, suppression, inversion du sens, durée d'arrêt
-  à chaque étape. Les horaires s'enchaînent d'un segment au suivant.
-- **Choix du mode segment par segment**, avec recalcul immédiat du total
-  (durée de bout en bout, temps d'attente en correspondance, prix, CO₂).
-- **Offres par compagnie** : opérateur, gare ou aéroport, heure de départ et
-  d'arrivée, durée, correspondances, prix par voyageur, lien vers le site de
-  vente pour vérification.
+**Comparateur** — l'itinéraire est celui que vous décrivez ; les trois modes sont
+mis en regard, segment par segment.
+
+- Durée porte à porte, prix le plus bas par voyageur, émissions de CO₂.
+- Points de passage : ajout, suppression, inversion du sens, durée d'arrêt à
+  chaque étape. Les horaires s'enchaînent d'un segment au suivant.
+- Choix du mode et du départ segment par segment, avec recalcul immédiat du
+  total (durée de bout en bout, attente en correspondance, prix, CO₂).
+- Offres par compagnie : opérateur, gare ou aéroport, heures de départ et
+  d'arrivée, correspondances, prix par voyageur, lien vers le site de vente.
+
+**Meilleur itinéraire** — aucun mode n'est présupposé. La vue teste chaque
+combinaison de modes, puis l'insertion d'un point de correspondance
+intermédiaire (train jusqu'à Paris puis avion, avion jusqu'à Francfort puis
+train...), et classe les résultats par durée, par prix ou par émissions. Un
+itinéraire retenu se reprend en un clic dans le comparateur : la correspondance
+devient une étape et les modes sont présélectionnés.
+
+## Le reste
+
+- **Aller-retour** : date et heure de retour optionnelles, avec un total cumulé.
+- **Choix du point d'embarquement** : taper une ville propose son centre, sa gare
+  et ses aéroports ; les temps d'accès s'ajustent selon ce que l'on retient. Les
+  résultats de rue ne sont interrogés que si la saisie ressemble à une adresse.
+- **Carte** : tracé schématique de l'itinéraire retenu sous le formulaire, un
+  trait par segment à la couleur de son mode, les villes du référentiel en
+  repères géographiques.
 - **Hypothèses ajustables** : motorisation et consommation, prix du carburant ou
   de la recharge, péages, usure, nombre d'occupants du véhicule, classe et carte
   de réduction ferroviaire, temps d'enregistrement et bagage en soute.
@@ -108,8 +126,10 @@ index.html          page et sections explicatives
 assets/styles.css   feuille de style, thème clair et sombre
 assets/data.js      villes, gares, aéroports, opérateurs, compagnies, hypothèses
 assets/engine.js    distances, cheminement réseau, durées, tarifs, horaires
+assets/router.js    recherche du meilleur itinéraire, combinaisons et correspondances
+assets/map.js       tracé SVG de l'itinéraire, sans fond de carte externe
 assets/providers.js accès à Nominatim et OSRM, avec repli silencieux
-assets/app.js       interface, saisie des points, rendu comparatif
+assets/app.js       interface, deux onglets, saisie des points, rendu
 tools/              assemblage de la version autonome
 dist/travia.html    version autonome en un seul fichier
 ```
@@ -120,6 +140,10 @@ dist/travia.html    version autonome en un seul fichier
 - Les relations courtes sur lignes classiques sont sous-estimées en durée.
 - Le référentiel couvre 110 villes ; ailleurs, l'outil rattache le point à la
   gare et à l'aéroport les plus proches et ajoute le temps d'accès routier.
+- La carte est un schéma, pas un fond de carte : le tracé routier ne suit pas le
+  détail de la route.
+- Un segment en voiture au milieu d'un trajet mixte suppose un véhicule
+  disponible sur place ; ce coût n'est pas compté.
 - Les émissions aériennes ne comprennent pas les effets non-CO₂ de l'aviation.
 
 ## Attribution

@@ -1,16 +1,18 @@
 /* TravIA — interface et orchestration.
-   Enchaine : saisie des points -> resolution des lieux -> mesure routiere
-   optionnelle -> calcul des trois modes -> rendu comparatif. */
+   Deux vues sur le meme itineraire : un comparateur segment par segment et une
+   recherche du meilleur trajet tous modes confondus, correspondances comprises. */
 (function (global) {
   'use strict';
 
   var T = global.TravIA;
   var E = T.engine;
+  var R = T.router;
   var doc = global.document;
 
   /* ------------------------------------------------------------- utilitaires */
 
   function $(sel, root) { return (root || doc).querySelector(sel); }
+  function all(sel, root) { return Array.prototype.slice.call((root || doc).querySelectorAll(sel)); }
   function el(tag, cls, text) {
     var n = doc.createElement(tag);
     if (cls) n.className = cls;
@@ -51,31 +53,41 @@
   function fmtDate(d) {
     return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' });
   }
+  function hhmm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 
   var MODES = {
-    car: { key: 'car', label: 'Voiture', short: 'VO' },
-    train: { key: 'train', label: 'Train', short: 'TR' },
-    plane: { key: 'plane', label: 'Avion', short: 'AV' }
+    car: { key: 'car', label: 'Voiture' },
+    train: { key: 'train', label: 'Train' },
+    plane: { key: 'plane', label: 'Avion' }
   };
   var MODE_ORDER = ['car', 'train', 'plane'];
 
   /* ------------------------------------------------------------------- etat */
 
+  function newDirection() {
+    return { places: null, route: null, routeStatus: 'none', legs: null, picks: [], expanded: {}, best: null };
+  }
+
   var state = {
     stops: [],
     opts: Object.assign({}, T.DEFAULTS),
     modes: { car: true, train: true, plane: true },
-    resolved: null,
-    route: null,
-    routeStatus: 'none',
-    picks: [],
-    expanded: {},
+    roundTrip: false,
+    out: newDirection(),
+    back: newDirection(),
+    tab: 'compare',
+    criterion: 'duration',
+    bestOpen: {},
+    computed: false,
     busy: false
   };
 
   var uid = 0;
   function newStop(query) {
-    return { uid: ++uid, query: query || '', place: null, hold: 0 };
+    return { uid: ++uid, query: query || '', place: null, anchor: null, hold: 0 };
+  }
+  function stopPlace(stop) {
+    return stop.place ? E.anchorPlace(stop.place, stop.anchor) : null;
   }
 
   /* ------------------------------------------------- saisie des points ----- */
@@ -88,14 +100,13 @@
       var isFirst = i === 0, isLast = i === state.stops.length - 1;
       var row = el('div', 'stop' + (!isFirst && !isLast ? ' stop--via' : ''));
 
-      var key = el('span', 'stop__key', isFirst ? 'D' : isLast ? 'A' : String(i));
-      row.appendChild(key);
+      row.appendChild(el('span', 'stop__key', isFirst ? 'D' : isLast ? 'A' : String(i)));
 
       var field = el('div', 'stop__field');
       var input = doc.createElement('input');
       input.type = 'text';
       input.value = stop.query;
-      input.placeholder = isFirst ? 'Ville, gare ou adresse de depart'
+      input.placeholder = isFirst ? 'Ville, gare, aeroport ou adresse'
         : isLast ? 'Destination' : 'Point de passage';
       input.setAttribute('aria-label', isFirst ? 'Depart' : isLast ? 'Arrivee' : 'Etape ' + i);
       input.autocomplete = 'off';
@@ -137,13 +148,34 @@
     });
   }
 
+  /* Propositions locales : la ville, puis sa gare et ses aeroports. Les
+     resultats de rue ne sont interroges que si la saisie ressemble a une
+     adresse. */
   function localMatches(q) {
-    return E.searchPlaces(q, 7).map(function (p) {
-      var sub = [];
-      if (p.rail) sub.push('gare');
-      if (p.air.length) sub.push(p.air.map(function (a) { return a.iata; }).join(' / '));
-      return { kind: 'local', place: p, label: p.name, sub: p.country + (sub.length ? ' — ' + sub.join(', ') : '') };
+    var out = [];
+    E.searchPlaces(q, 4).forEach(function (p) {
+      out.push({
+        kind: 'local', place: p, anchor: { type: 'city' },
+        label: p.name, sub: p.country + ' — centre-ville'
+      });
+      if (p.rail) {
+        out.push({
+          kind: 'local', place: p, anchor: { type: 'rail' },
+          label: p.rail.station, sub: 'Gare — ' + p.name
+        });
+      }
+      p.air.forEach(function (a) {
+        out.push({
+          kind: 'local', place: p, anchor: { type: 'air', iata: a.iata },
+          label: a.name + ' (' + a.iata + ')', sub: 'Aeroport — ' + p.name
+        });
+      });
     });
+    return out.slice(0, 9);
+  }
+
+  function looksLikeAddress(q) {
+    return /\d/.test(q) || q.indexOf(',') > -1 || q.trim().split(/\s+/).length >= 3;
   }
 
   function attachAutocomplete(input, field, stop) {
@@ -181,9 +213,11 @@
       if (!it) return;
       if (it.kind === 'local') {
         stop.place = it.place;
-        stop.query = it.place.name;
+        stop.anchor = it.anchor;
+        stop.query = it.label;
       } else {
         stop.place = E.buildCustomPlace(it.label, it.lat, it.lon, { country: it.country, cc: it.cc });
+        stop.anchor = null;
         stop.query = it.label;
       }
       input.value = stop.query;
@@ -195,27 +229,32 @@
       if (q.length < 2) { close(); return; }
       var list = localMatches(q);
       open(list);
-      if (state.opts.useLive && q.length >= 3 && T.providers.available) {
-        clearTimeout(remoteTimer);
-        remoteTimer = setTimeout(function () {
-          var current = input.value.trim();
-          if (current !== q) return;
-          T.providers.geocode(q).then(function (rows) {
-            if (input.value.trim() !== q) return;
-            var extra = rows.slice(0, 4).map(function (r) {
-              return { kind: 'remote', label: r.label, sub: r.detail.split(',').slice(-3).join(',').trim(), lat: r.lat, lon: r.lon, country: r.country, cc: r.cc };
-            }).filter(function (r) {
-              return !list.some(function (l) { return E.normalize(l.label) === E.normalize(r.label); });
-            });
-            if (extra.length) open(list.concat(extra));
+      var wantRemote = state.opts.useLive && T.providers.available && q.length >= 3 &&
+        (looksLikeAddress(q) || !list.length);
+      if (!wantRemote) return;
+      clearTimeout(remoteTimer);
+      remoteTimer = setTimeout(function () {
+        if (input.value.trim() !== q) return;
+        T.providers.geocode(q).then(function (rows) {
+          if (input.value.trim() !== q) return;
+          var extra = rows.slice(0, 5).map(function (r) {
+            return {
+              kind: 'remote', label: r.label,
+              sub: r.detail.split(',').slice(-3).join(',').trim(),
+              lat: r.lat, lon: r.lon, country: r.country, cc: r.cc
+            };
+          }).filter(function (r) {
+            return !list.some(function (l) { return E.normalize(l.label) === E.normalize(r.label); });
           });
-        }, 520);
-      }
+          if (extra.length) open(list.concat(extra));
+        });
+      }, 480);
     }
 
     input.addEventListener('input', function () {
       stop.query = input.value;
       stop.place = null;
+      stop.anchor = null;
       clearTimeout(localTimer);
       localTimer = setTimeout(search, 130);
     });
@@ -254,21 +293,36 @@
     state.modes.car = $('#modeCar').checked;
     state.modes.train = $('#modeTrain').checked;
     state.modes.plane = $('#modePlane').checked;
+    state.roundTrip = $('#roundTrip').checked;
   }
 
-  function departureDate() {
-    var d = $('#date').value, t = $('#time').value || '08:00';
+  function dateFrom(dateInput, timeInput, fallbackTime) {
+    var d = dateInput.value;
+    if (!d) return null;
+    var t = timeInput.value || fallbackTime;
     var parts = d.split('-'), tp = t.split(':');
     return new Date(+parts[0], +parts[1] - 1, +parts[2], +tp[0], +tp[1]);
   }
+  function departureDate() { return dateFrom($('#date'), $('#time'), '08:00'); }
+  function returnDate() { return dateFrom($('#returnDate'), $('#returnTime'), '17:00'); }
 
   function persist() {
     try {
       global.localStorage.setItem('travia.form', JSON.stringify({
-        stops: state.stops.map(function (s) { return { query: s.query, id: s.place && !s.place.custom ? s.place.id : null, lat: s.place && s.place.custom ? s.place.lat : null, lon: s.place && s.place.custom ? s.place.lon : null, hold: s.hold }; }),
+        stops: state.stops.map(function (s) {
+          return {
+            query: s.query,
+            id: s.place && !s.place.custom ? s.place.id : null,
+            lat: s.place && s.place.custom ? s.place.lat : null,
+            lon: s.place && s.place.custom ? s.place.lon : null,
+            anchor: s.anchor, hold: s.hold
+          };
+        }),
         date: $('#date').value, time: $('#time').value,
+        roundTrip: $('#roundTrip').checked,
+        returnDate: $('#returnDate').value, returnTime: $('#returnTime').value,
         passengers: $('#passengers').value,
-        modes: state.modes, opts: state.opts
+        modes: state.modes, opts: state.opts, tab: state.tab
       }));
     } catch (e) { /* stockage indisponible : sans consequence */ }
   }
@@ -283,17 +337,21 @@
     state.stops = saved.stops.map(function (s) {
       var stop = newStop(s.query);
       stop.hold = s.hold || 0;
+      stop.anchor = s.anchor || null;
       if (s.id) stop.place = E.placeById(s.id);
       else if (s.lat != null) stop.place = E.buildCustomPlace(s.query, s.lat, s.lon, null);
       return stop;
     });
     if (saved.time) $('#time').value = saved.time;
     if (saved.passengers) $('#passengers').value = saved.passengers;
+    if (saved.returnTime) $('#returnTime').value = saved.returnTime;
+    if (saved.roundTrip) { $('#roundTrip').checked = true; $('#returnFields').hidden = false; }
     if (saved.modes) {
       $('#modeCar').checked = saved.modes.car !== false;
       $('#modeTrain').checked = saved.modes.train !== false;
       $('#modePlane').checked = saved.modes.plane !== false;
     }
+    if (saved.tab === 'best') state.tab = 'best';
     if (saved.opts) {
       var o = saved.opts;
       if (o.fuel) $('#fuel').value = o.fuel;
@@ -323,29 +381,35 @@
       var q = (stop.query || '').trim();
       if (!q) return Promise.resolve(null);
       var local = E.searchPlaces(q, 1)[0];
-      if (local) { stop.place = local; return Promise.resolve(local); }
+      if (local) { stop.place = local; stop.anchor = { type: 'city' }; return Promise.resolve(local); }
       if (!state.opts.useLive || !T.providers.available) return Promise.resolve(null);
       return T.providers.geocode(q).then(function (rows) {
         if (!rows.length) return null;
         stop.place = E.buildCustomPlace(rows[0].label, rows[0].lat, rows[0].lon,
           { country: rows[0].country, cc: rows[0].cc });
+        stop.anchor = null;
         return stop.place;
       });
     });
     return Promise.all(jobs);
   }
 
-  /* --------------------------------------------------------- calcul --------- */
-
   function fetchRoute(places) {
     if (!state.opts.useLive || !T.providers.available || !state.modes.car) {
-      state.routeStatus = state.modes.car ? 'off' : 'none';
-      return Promise.resolve(null);
+      return Promise.resolve({ route: null, status: state.modes.car ? 'off' : 'none' });
     }
     return T.providers.route(places).then(function (r) {
-      state.routeStatus = r ? 'live' : 'fallback';
-      return r;
+      var ok = r && r.legs && r.legs.length === places.length - 1;
+      return { route: ok ? r : null, status: ok ? 'live' : 'fallback' };
     });
+  }
+
+  /* --------------------------------------------------------- calcul --------- */
+
+  function modeAvailable(leg, mode) {
+    if (!state.modes[mode]) return false;
+    if (mode === 'car') return leg.car.available;
+    return leg[mode].available;
   }
 
   function defaultMode(leg) {
@@ -364,26 +428,24 @@
     return [];
   }
 
-  /* Recalcule tous les segments en chainant les horaires selon les choix. */
-  function computeAll() {
-    var places = state.resolved;
+  /* Recalcule les segments d'une direction en chainant les horaires. */
+  function computeLegs(dir, startDate, holds) {
+    var places = dir.places;
     var now = new Date();
-    var t = departureDate();
+    var t = new Date(startDate.getTime());
     var legs = [];
     for (var i = 0; i < places.length - 1; i++) {
-      var measured = state.route && state.route.legs && state.route.legs[i] ? state.route.legs[i] : null;
+      var measured = dir.route && dir.route.legs[i] ? dir.route.legs[i] : null;
       var leg = E.computeLeg(places[i], places[i + 1], t, state.opts, now, measured);
       leg.index = i;
 
-      var pick = state.picks[i] || (state.picks[i] = { mode: null, offer: 0 });
+      var pick = dir.picks[i] || (dir.picks[i] = { mode: null, offer: -1 });
       if (!pick.mode || !modeAvailable(leg, pick.mode)) {
         pick.mode = defaultMode(leg);
         pick.offer = -1;
       }
       var offers = offersFor(leg, pick.mode);
       if (pick.mode && pick.mode !== 'car') {
-        /* par defaut, le premier depart possible apres l'arrivee sur place :
-           c'est le choix qui minimise l'attente en correspondance */
         if (pick.offer < 0 || pick.offer >= offers.length) pick.offer = 0;
       }
       leg.pick = pick;
@@ -394,7 +456,7 @@
         var arrive = pick.mode === 'car'
           ? new Date(t.getTime() + leg.car.durationMin * 60000)
           : new Date(leg.chosen.arrivee.getTime() + (leg.chosen.egressMin || 0) * 60000);
-        t = new Date(arrive.getTime() + (state.stops[i + 1].hold || 0) * 3600000);
+        t = new Date(arrive.getTime() + ((holds[i + 1] || 0) * 3600000));
       } else {
         t = new Date(t.getTime() + 3600000);
       }
@@ -402,13 +464,6 @@
     return legs;
   }
 
-  function modeAvailable(leg, mode) {
-    if (!state.modes[mode]) return false;
-    if (mode === 'car') return leg.car.available;
-    return leg[mode].available;
-  }
-
-  /* Meilleur total par mode sur l'ensemble de l'itineraire. */
   function itineraryTotals(legs) {
     var out = {};
     MODE_ORDER.forEach(function (m) {
@@ -436,7 +491,7 @@
 
   /* ---------------------------------------------------------- rendu --------- */
 
-  var results = $('#results');
+  var results = $('#results'), bestPanel = $('#best');
 
   function badge(text, kind) {
     return '<span class="badge' + (kind ? ' badge--' + kind : '') + '">' + esc(text) + '</span>';
@@ -520,11 +575,12 @@
       (c.peak ? '<p class="rsection__note">Depart en heure de pointe : une majoration de temps a ete appliquee.</p>' : '');
   }
 
-  function offersPanel(leg, mode) {
+  function offersPanel(dirKey, dir, leg, mode) {
     var res = leg[mode];
     if (!res.available) return '<p class="unavailable">' + esc(res.reason) + '</p>';
     var ref = leg.depart;
-    var expanded = state.expanded[leg.index + ':' + mode];
+    var key = leg.index + ':' + mode;
+    var expanded = dir.expanded[key];
     var shown = expanded ? res.offers : res.offers.slice(0, 8);
     if (!expanded && leg.pick.offer >= shown.length && res.offers[leg.pick.offer]) {
       shown = res.offers.slice(0, leg.pick.offer + 1);
@@ -541,9 +597,9 @@
         : esc(o.company + ' — vol ' + o.code);
       var link = (o.transfers ? o.transfers + (mode === 'train' ? ' correspondance' + (o.transfers > 1 ? 's' : '') : ' escale' + (o.transfers > 1 ? 's' : '')) : 'direct');
       return '<tr class="' + (picked ? 'picked' : '') + '">' +
-        '<td><input type="radio" class="offer-pick" name="pick-' + leg.index + '" ' +
-        'data-leg="' + leg.index + '" data-mode="' + mode + '" data-offer="' + idx + '"' + (picked ? ' checked' : '') +
-        ' aria-label="Retenir ' + esc(o.operator) + ' au depart de ' + pad(o.depart.getHours()) + 'h' + pad(o.depart.getMinutes()) + '"></td>' +
+        '<td><input type="radio" class="offer-pick" name="pick-' + dirKey + '-' + leg.index + '" ' +
+        'data-dir="' + dirKey + '" data-leg="' + leg.index + '" data-mode="' + mode + '" data-offer="' + idx + '"' + (picked ? ' checked' : '') +
+        ' aria-label="Retenir ' + esc(o.operator) + ' au depart de ' + hhmm(o.depart) + '"></td>' +
         '<td><span class="op-name">' + esc(o.operator) + '</span><span class="op-sub">' + sub + '</span>' +
         '<span class="op-sub">' + esc(o.fromLabel) + ' vers ' + esc(o.toLabel) + '</span></td>' +
         '<td class="num time">' + fmtClock(o.depart, ref) + '</td>' +
@@ -561,7 +617,7 @@
       : 'Porte a porte : ' + res.offers[0].accessMin + ' min avant le vol (acces et enregistrement) et ' + res.offers[0].egressMin + ' min apres.';
 
     var more = res.offers.length > shown.length
-      ? '<button type="button" class="btn btn--ghost more" data-leg="' + leg.index + '" data-mode="' + mode + '">' +
+      ? '<button type="button" class="btn btn--ghost more" data-dir="' + dirKey + '" data-leg="' + leg.index + '" data-mode="' + mode + '">' +
         'Afficher les ' + (res.offers.length - shown.length) + ' autres departs</button>'
       : '';
 
@@ -573,14 +629,14 @@
       ' Distance retenue : ' + fmtKm(res.distanceKm) + '. Tarifs estimes par le modele, a verifier aupres de la compagnie.</p>';
   }
 
-  function legCard(leg) {
+  function legCard(dirKey, dir, leg, holds) {
     var tabs = MODE_ORDER.map(function (m) {
       var enabled = state.modes[m];
       var ok = enabled && modeAvailable(leg, m);
       var dur = ok ? E.legDuration(leg, m, state.opts) : null;
       var price = ok ? E.legPrice(leg, m, state.opts) : null;
       var selected = leg.pick.mode === m;
-      return '<button type="button" class="tab tab--' + m + '" role="tab" data-leg="' + leg.index + '" data-mode="' + m + '"' +
+      return '<button type="button" class="tab tab--' + m + '" role="tab" data-dir="' + dirKey + '" data-leg="' + leg.index + '" data-mode="' + m + '"' +
         ' aria-selected="' + (selected ? 'true' : 'false') + '"' + (ok ? '' : ' disabled') + '>' +
         '<span class="tab__name">' + MODES[m].label + '</span>' +
         '<span class="tab__main">' + (ok ? fmtDur(dur) : (enabled ? 'indisponible' : 'non compare')) + '</span>' +
@@ -589,22 +645,22 @@
     }).join('');
 
     var body = leg.pick.mode === 'car' ? carPanel(leg)
-      : leg.pick.mode ? offersPanel(leg, leg.pick.mode)
+      : leg.pick.mode ? offersPanel(dirKey, dir, leg, leg.pick.mode)
       : '<p class="unavailable">Aucun mode disponible sur ce segment avec les options retenues.</p>';
 
-    var hold = state.stops[leg.index + 1] && leg.index + 1 < state.stops.length - 1;
+    var holdHours = holds[leg.index + 1] || 0;
 
     return '<article class="leg">' +
       '<div class="leg__head"><h3 class="leg__title">' + (leg.index + 1) + '. ' +
       esc(leg.from.name) + ' — ' + esc(leg.to.name) + '</h3>' +
-      '<span class="leg__meta">' + fmtKm(leg.geoKm) + ' a vol d oiseau — depart le ' + fmtDate(leg.depart) + ' vers ' + pad(leg.depart.getHours()) + ':' + pad(leg.depart.getMinutes()) +
-      (hold ? ' — arret de ' + (state.stops[leg.index + 1].hold || 0) + ' h a l etape' : '') + '</span></div>' +
+      '<span class="leg__meta">' + fmtKm(leg.geoKm) + ' a vol d oiseau — depart le ' + fmtDate(leg.depart) + ' vers ' + hhmm(leg.depart) +
+      (holdHours ? ' — arret de ' + holdHours + ' h a l etape' : '') + '</span></div>' +
       '<div class="leg__tabs" role="tablist">' + tabs + '</div>' +
       '<div class="leg__body">' + body + '</div>' +
       '</article>';
   }
 
-  function totalBar(legs) {
+  function tripSummary(legs, holds) {
     var travel = 0, price = 0, co2 = 0, ok = true, path = [];
     legs.forEach(function (l) {
       if (!l.chosen) { ok = false; return; }
@@ -616,80 +672,300 @@
       }
       path.push(MODES[l.pick.mode].label);
     });
-    if (!ok) return '';
-
-    /* duree reelle de bout en bout : du depart du premier segment a l'arrivee
-       du dernier, attentes entre correspondances comprises */
-    var first = legs[0];
+    if (!ok) return null;
+    var first = legs[0], last = legs[legs.length - 1];
     var start = first.pick.mode === 'car' ? first.car.depart
       : new Date(first.chosen.depart.getTime() - (first.chosen.accessMin || 0) * 60000);
-    var last = legs[legs.length - 1];
     var arrival = last.pick.mode === 'car' ? last.car.arrivee
       : new Date(last.chosen.arrivee.getTime() + (last.chosen.egressMin || 0) * 60000);
     var dur = (arrival - start) / 60000;
     var hold = 0;
-    legs.forEach(function (l, i) { if (i > 0) hold += (state.stops[i].hold || 0) * 60; });
-    var wait = Math.max(0, dur - travel - hold);
+    legs.forEach(function (l, i) { if (i > 0) hold += (holds[i] || 0) * 60; });
+    return {
+      path: path, travel: travel, dur: dur, hold: hold,
+      wait: Math.max(0, dur - travel - hold),
+      price: Math.round(price * 100) / 100, co2: co2,
+      start: start, arrival: arrival
+    };
+  }
 
+  function totalBar(sum, label) {
+    if (!sum) return '';
     return '<div class="total"><div class="total__set">' +
-      '<div class="total__item"><span class="total__key">Itineraire retenu</span><span class="total__path">' +
-      path.join(' puis ') + (wait > 4 ? ' — ' + fmtDur(wait) + ' d attente' : '') +
-      (hold ? ' — ' + fmtDur(hold) + ' sur place' : '') + '</span></div>' +
-      '<div class="total__item"><span class="total__key">Duree de bout en bout</span><span class="total__val">' + fmtDur(dur) + '</span></div>' +
-      '<div class="total__item"><span class="total__key">Dont transport</span><span class="total__val">' + fmtDur(travel) + '</span></div>' +
-      '<div class="total__item"><span class="total__key">Prix par voyageur</span><span class="total__val">' + fmtPrice(Math.round(price * 100) / 100) + '</span></div>' +
-      '<div class="total__item"><span class="total__key">CO<sub>2</sub> par voyageur</span><span class="total__val">' + fmtCo2(co2) + '</span></div>' +
-      '<div class="total__item"><span class="total__key">Arrivee</span><span class="total__val">' + fmtDate(arrival) + ' ' + pad(arrival.getHours()) + ':' + pad(arrival.getMinutes()) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">' + (label || 'Itineraire retenu') + '</span><span class="total__path">' +
+      sum.path.join(' puis ') + (sum.wait > 4 ? ' — ' + fmtDur(sum.wait) + ' d attente' : '') +
+      (sum.hold ? ' — ' + fmtDur(sum.hold) + ' sur place' : '') + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Duree de bout en bout</span><span class="total__val">' + fmtDur(sum.dur) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Dont transport</span><span class="total__val">' + fmtDur(sum.travel) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Prix par voyageur</span><span class="total__val">' + fmtPrice(sum.price) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">CO<sub>2</sub> par voyageur</span><span class="total__val">' + fmtCo2(sum.co2) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Arrivee</span><span class="total__val">' + fmtDate(sum.arrival) + ' ' + hhmm(sum.arrival) + '</span></div>' +
       '</div></div>';
   }
 
-  function render() {
-    var legs = computeAll();
-    state.legs = legs;
+  function directionBlock(dirKey, dir, legs, holds, title, startDate) {
     var totals = itineraryTotals(legs);
+    var sum = tripSummary(legs, holds);
+    var head = '<div class="direction-head"><h2>' + esc(title) + '</h2>' +
+      '<span>' + fmtDate(startDate) + ', depart vers ' + hhmm(startDate) + '</span></div>';
+    return '<div class="direction">' + head +
+      renderComparison(legs, totals) +
+      '<section class="rsection"><div class="rsection__head"><h2>Segments et offres</h2>' +
+      '<span class="rsection__note">Choisissez un mode et un depart par segment</span></div>' +
+      legs.map(function (l) { return legCard(dirKey, dir, l, holds); }).join('') + '</section>' +
+      totalBar(sum, 'Itineraire retenu') + '</div>';
+  }
 
-    var routeBadge = state.routeStatus === 'live'
+  /* ------------------------------------------------------ meilleur trajet --- */
+
+  function optionRow(dirKey, opt, index, criterion) {
+    var open = state.bestOpen[dirKey] === index;
+    var chain = opt.steps.map(function (s, i) {
+      return (i ? '<span class="opt__arrow">›</span>' : '') +
+        '<span class="opt__seg opt__seg--' + s.mode + '">' + MODES[s.mode].label + '</span>' +
+        '<span class="opt__arrow">' + esc(s.to.name) + '</span>';
+    }).join('');
+
+    var detail = '';
+    if (open) {
+      var rows = opt.steps.map(function (s) {
+        return '<tr><td><span class="op-name">' + MODES[s.mode].label + '</span>' +
+          '<span class="op-sub">' + esc(s.operator) + '</span></td>' +
+          '<td><span class="op-sub">' + esc(s.from.name) + ' vers ' + esc(s.to.name) + '</span>' +
+          (s.fromLabel ? '<span class="op-sub">' + esc(s.fromLabel) + ' — ' + esc(s.toLabel) + '</span>' : '') + '</td>' +
+          '<td class="num time">' + fmtClock(s.depart, opt.depart) + '</td>' +
+          '<td class="num time">' + fmtClock(s.arrivee, opt.depart) + '</td>' +
+          '<td class="num">' + fmtDur(s.durationMin) + '</td>' +
+          '<td class="num">' + fmtPrice(s.price) + '</td></tr>';
+      }).join('');
+      var mixed = opt.steps.some(function (s) { return s.mode === 'car'; }) && opt.steps.length > 1;
+      detail = '<div class="opt__detail"><div class="table-scroll"><table class="grid"><thead><tr>' +
+        '<th>Mode</th><th>Segment</th><th class="num">Depart</th><th class="num">Arrivee</th>' +
+        '<th class="num">Duree</th><th class="num">Prix</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<p class="rsection__note" style="margin-top:10px">' +
+        (mixed ? 'Un segment en voiture au milieu d un trajet suppose un vehicule disponible sur place (location ou covoiturage), non compte dans le prix. ' : '') +
+        'Temps total hors attente avant le premier depart. ' +
+        '<button type="button" class="btn btn--ghost apply-opt" data-dir="' + dirKey + '" data-index="' + index + '">Reprendre cet itineraire dans le comparateur</button></p></div>';
+    }
+
+    return '<article class="opt' + (index === 0 ? ' opt--best' : '') + '">' +
+      '<button type="button" class="opt__head" data-dir="' + dirKey + '" data-index="' + index + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+      '<span class="opt__rank">' + (index + 1) + '</span>' +
+      '<span><span class="opt__label">' + esc(R.describe(opt)) + '</span>' +
+      '<span class="opt__chain">' + chain + '</span></span>' +
+      '<span class="opt__figs">' +
+      '<span class="opt__fig"><b>' + fmtDur(opt.durationMin) + '</b><span>duree</span></span>' +
+      '<span class="opt__fig"><b>' + fmtPrice(Math.round(opt.price)) + '</b><span>par voyageur</span></span>' +
+      '<span class="opt__fig"><b>' + hhmm(opt.depart) + ' › ' + hhmm(opt.arrivee) + '</b><span>' + fmtCo2(opt.co2) + ' CO<sub>2</sub></span></span>' +
+      '</span></button>' + detail + '</article>';
+  }
+
+  function bestBlock(dirKey, dir, title, startDate) {
+    var list = dir.best || [];
+    if (!list.length) {
+      return '<div class="direction"><div class="direction-head"><h2>' + esc(title) + '</h2></div>' +
+        '<p class="unavailable">Aucun itineraire praticable entre ces deux lieux avec les modes retenus.</p></div>';
+    }
+    var ranked = R.condense(list, state.criterion, 10, startDate);
+    return '<div class="direction"><div class="direction-head"><h2>' + esc(title) + '</h2>' +
+      '<span>' + ranked.length + ' itineraires retenus sur ' + list.length + ' combinaisons evaluees</span></div>' +
+      ranked.map(function (o, i) { return optionRow(dirKey, o, i, state.criterion); }).join('') + '</div>';
+  }
+
+  function renderBest() {
+    var dep = departureDate();
+    var html = '<div class="sortbar"><span>Classer par</span>' +
+      [['duration', 'duree'], ['price', 'prix'], ['co2', 'emissions']].map(function (c) {
+        return '<button type="button" class="sort-btn" data-criterion="' + c[0] + '" aria-pressed="' +
+          (state.criterion === c[0] ? 'true' : 'false') + '">' + c[1] + '</button>';
+      }).join('') +
+      '<span class="rsection__note">Voiture, train, avion et combinaisons avec une correspondance</span></div>';
+
+    html += bestBlock('out', state.out, state.roundTrip ? 'Aller' : 'Itineraires possibles', dep);
+    if (state.roundTrip && state.back.best) {
+      html += bestBlock('back', state.back, 'Retour', returnDate());
+    }
+    bestPanel.innerHTML = html;
+
+    all('.sort-btn', bestPanel).forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.criterion = b.getAttribute('data-criterion');
+        state.bestOpen = {};
+        renderBest();
+        renderMap();
+      });
+    });
+    all('.opt__head', bestPanel).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var d = b.getAttribute('data-dir'), i = +b.getAttribute('data-index');
+        state.bestOpen[d] = state.bestOpen[d] === i ? -1 : i;
+        renderBest();
+        renderMap();
+      });
+    });
+    all('.apply-opt', bestPanel).forEach(function (b) {
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        applyOption(b.getAttribute('data-dir'), +b.getAttribute('data-index'));
+      });
+    });
+  }
+
+  /* Reprend un itineraire propose dans le comparateur : le point de
+     correspondance devient une etape et les modes sont preselectionnes. */
+  function applyOption(dirKey, index) {
+    var dir = state[dirKey];
+    var ranked = R.condense(dir.best || [], state.criterion, 10,
+      dirKey === 'out' ? departureDate() : returnDate());
+    var opt = ranked[index];
+    if (!opt) return;
+    if (opt.via) {
+      /* la correspondance n'est cherchee que sur une relation a deux points :
+         l'etape s'insere donc entre le depart et l'arrivee, dans les deux sens */
+      var hub = newStop(opt.via.name);
+      hub.place = opt.via;
+      hub.anchor = { type: 'city' };
+      state.stops.splice(state.stops.length - 1, 0, hub);
+      renderStops();
+      persist();
+      state.out.picks = [];
+      state.back.picks = [];
+      state.tab = 'compare';
+      syncTabs();
+      run(null, { dir: dirKey, modes: opt.modes });
+      return;
+    }
+    dir.picks = opt.modes.map(function (m) { return { mode: m, offer: -1 }; });
+    state.tab = 'compare';
+    syncTabs();
+    render();
+    renderMap();
+  }
+
+  /* ------------------------------------------------------------- carte ----- */
+
+  function mapSegments() {
+    if (state.tab === 'best') {
+      /* la carte suit l'itineraire aller, celui que la liste met en avant */
+      var dirKey = 'out';
+      var dir = state[dirKey];
+      if (!dir.best || !dir.best.length) return null;
+      var ranked = R.condense(dir.best, state.criterion, 10, departureDate());
+      var idx = state.bestOpen[dirKey];
+      var opt = ranked[idx >= 0 ? idx : 0] || ranked[0];
+      if (!opt) return null;
+      return opt.steps.map(function (s) {
+        var path = s.mode === 'plane' ? null : (E.networkPath(s.from, s.to) || {}).nodes;
+        return { from: s.from, to: s.to, mode: s.mode, path: path };
+      });
+    }
+    var legs = state.out.legs;
+    if (!legs || !legs.length) return null;
+    return legs.map(function (l) {
+      var mode = l.pick.mode || 'car';
+      var path = mode === 'plane' ? null : (E.networkPath(l.from, l.to) || {}).nodes;
+      return { from: l.from, to: l.to, mode: mode, path: path };
+    });
+  }
+
+  function renderMap() {
+    var segs = mapSegments();
+    var fig = $('#map');
+    if (!segs) { fig.hidden = true; return; }
+    fig.hidden = false;
+    T.map.render($('#mapCanvas'), $('#mapLegend'), segs);
+  }
+
+  /* ------------------------------------------------------------- rendu ----- */
+
+  function holdsFor(dirKey) {
+    var holds = state.stops.map(function (s) { return s.hold || 0; });
+    return dirKey === 'back' ? holds.slice().reverse() : holds;
+  }
+
+  function render() {
+    if (!state.computed) return;
+    var dep = departureDate();
+    state.out.legs = computeLegs(state.out, dep, holdsFor('out'));
+
+    var routeBadge = state.out.routeStatus === 'live'
       ? badge('Route mesuree — OSRM', 'live')
-      : state.routeStatus === 'fallback'
+      : state.out.routeStatus === 'fallback'
         ? badge('Service OSRM injoignable — distances estimees', 'model')
-        : state.routeStatus === 'off'
+        : state.out.routeStatus === 'off'
           ? badge('Distances routieres estimees', 'model')
           : '';
 
     var html = '<div class="badges">' + routeBadge +
       badge('Horaires et tarifs : modele TravIA', 'model') +
-      badge(state.stops.length + ' points, ' + legs.length + ' segment' + (legs.length > 1 ? 's' : ''), '') +
+      badge(state.stops.length + ' points, ' + state.out.legs.length + ' segment' + (state.out.legs.length > 1 ? 's' : '') +
+        (state.roundTrip ? ', aller-retour' : ''), '') +
       badge('Calcule le ' + new Date().toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), '') +
       '</div>';
 
-    html += renderComparison(legs, totals);
-    html += '<section class="rsection"><div class="rsection__head"><h2>Segments et offres</h2>' +
-      '<span class="rsection__note">Choisissez un mode et un depart par segment</span></div>' +
-      legs.map(legCard).join('') + '</section>';
-    html += totalBar(legs);
+    html += directionBlock('out', state.out, state.out.legs, holdsFor('out'),
+      state.roundTrip ? 'Aller' : 'Itineraire', dep);
+
+    var sumOut = tripSummary(state.out.legs, holdsFor('out'));
+    var sumBack = null;
+    if (state.roundTrip && state.back.places) {
+      state.back.legs = computeLegs(state.back, returnDate(), holdsFor('back'));
+      html += directionBlock('back', state.back, state.back.legs, holdsFor('back'), 'Retour', returnDate());
+      sumBack = tripSummary(state.back.legs, holdsFor('back'));
+    }
+    if (sumOut && sumBack) {
+      html += '<div class="total"><div class="total__set">' +
+        '<div class="total__item"><span class="total__key">Aller-retour</span><span class="total__path">' +
+        sumOut.path.join(' puis ') + ' — retour ' + sumBack.path.join(' puis ') + '</span></div>' +
+        '<div class="total__item"><span class="total__key">Transport cumule</span><span class="total__val">' +
+        fmtDur(sumOut.travel + sumBack.travel) + '</span></div>' +
+        '<div class="total__item"><span class="total__key">Prix par voyageur</span><span class="total__val">' +
+        fmtPrice(Math.round((sumOut.price + sumBack.price) * 100) / 100) + '</span></div>' +
+        '<div class="total__item"><span class="total__key">CO<sub>2</sub> par voyageur</span><span class="total__val">' +
+        fmtCo2(sumOut.co2 + sumBack.co2) + '</span></div>' +
+        (state.opts.passengers > 1 ? '<div class="total__item"><span class="total__key">Total ' + state.opts.passengers +
+          ' voyageurs</span><span class="total__val">' +
+          fmtPrice(Math.round((sumOut.price + sumBack.price) * state.opts.passengers * 100) / 100) + '</span></div>' : '') +
+        '</div></div>';
+    }
 
     results.innerHTML = html;
 
-    Array.prototype.forEach.call(results.querySelectorAll('.tab'), function (btn) {
+    all('.tab', results).forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var i = +btn.getAttribute('data-leg');
-        state.picks[i] = { mode: btn.getAttribute('data-mode'), offer: -1 };
+        var d = btn.getAttribute('data-dir'), i = +btn.getAttribute('data-leg');
+        state[d].picks[i] = { mode: btn.getAttribute('data-mode'), offer: -1 };
+        render();
+        renderMap();
+      });
+    });
+    all('.more', results).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var d = btn.getAttribute('data-dir');
+        state[d].expanded[btn.getAttribute('data-leg') + ':' + btn.getAttribute('data-mode')] = true;
         render();
       });
     });
-    Array.prototype.forEach.call(results.querySelectorAll('.more'), function (btn) {
-      btn.addEventListener('click', function () {
-        state.expanded[btn.getAttribute('data-leg') + ':' + btn.getAttribute('data-mode')] = true;
-        render();
-      });
-    });
-    Array.prototype.forEach.call(results.querySelectorAll('.offer-pick'), function (input) {
+    all('.offer-pick', results).forEach(function (input) {
       input.addEventListener('change', function () {
-        var i = +input.getAttribute('data-leg');
-        state.picks[i] = { mode: input.getAttribute('data-mode'), offer: +input.getAttribute('data-offer') };
+        var d = input.getAttribute('data-dir'), i = +input.getAttribute('data-leg');
+        state[d].picks[i] = { mode: input.getAttribute('data-mode'), offer: +input.getAttribute('data-offer') };
         render();
+        renderMap();
       });
     });
+
+    renderBest();
+    renderMap();
+  }
+
+  function syncTabs() {
+    var compare = state.tab === 'compare';
+    $('#tabCompare').setAttribute('aria-selected', compare ? 'true' : 'false');
+    $('#tabBest').setAttribute('aria-selected', compare ? 'false' : 'true');
+    results.hidden = !compare;
+    bestPanel.hidden = compare;
+    try { global.history.replaceState(null, '', compare ? '#comparateur' : '#meilleur-itineraire'); } catch (e) { /* ignore */ }
   }
 
   /* ------------------------------------------------------------- pilotage --- */
@@ -700,7 +976,7 @@
     note.className = 'form-note' + (isError ? ' form-note--error' : '');
   }
 
-  function run(ev) {
+  function run(ev, forced) {
     if (ev) ev.preventDefault();
     if (state.busy) return;
     readOptions();
@@ -711,31 +987,65 @@
       return;
     }
     if (!$('#date').value) { setNote('Indiquez une date de depart.', true); return; }
+    if (state.roundTrip && !$('#returnDate').value) {
+      setNote('Indiquez une date de retour, ou decochez le retour.', true);
+      return;
+    }
+    var dep = departureDate(), ret = state.roundTrip ? returnDate() : null;
+    if (ret && ret <= dep) {
+      setNote('Le retour doit etre posterieur a l aller.', true);
+      return;
+    }
 
     var btn = $('#compute');
     state.busy = true;
     btn.disabled = true;
     setNote('<span class="spinner"></span>Resolution des lieux et calcul en cours');
 
-    resolveStops().then(function (places) {
+    resolveStops().then(function (raw) {
       var missing = [];
-      places.forEach(function (p, i) {
+      raw.forEach(function (p, i) {
         if (!p) missing.push(state.stops[i].query || ('point ' + (i + 1)));
       });
       if (missing.length) {
         throw new Error('Lieu introuvable : ' + missing.join(', ') + '. Choisissez une proposition dans la liste.');
       }
-      state.resolved = places;
-      state.picks = [];
+      var places = state.stops.map(stopPlace);
+      state.out = newDirection();
+      state.back = newDirection();
+      state.out.places = places;
+      if (state.roundTrip) state.back.places = places.slice().reverse();
       return fetchRoute(places);
-    }).then(function (route) {
-      state.route = route && route.legs && route.legs.length === state.resolved.length - 1 ? route : null;
-      if (route && !state.route) state.routeStatus = 'fallback';
+    }).then(function (res) {
+      state.out.route = res.route;
+      state.out.routeStatus = res.status;
+      if (state.roundTrip && state.back.places) {
+        state.back.routeStatus = res.status;
+        state.back.route = res.route
+          ? { distanceKm: res.route.distanceKm, durationMin: res.route.durationMin, legs: res.route.legs.slice().reverse() }
+          : null;
+      }
+      if (forced && forced.modes) {
+        state[forced.dir || 'out'].picks = forced.modes.map(function (m) {
+          return { mode: m, offer: -1 };
+        });
+      }
+
+      var now = new Date();
+      state.out.best = R.search(state.out.places, departureDate(), state.opts, now, state.modes,
+        state.stops.map(function (s) { return s.hold || 0; }));
+      if (state.roundTrip) {
+        state.back.best = R.search(state.back.places, returnDate(), state.opts, now, state.modes,
+          state.stops.map(function (s) { return s.hold || 0; }).reverse());
+      }
+
+      state.computed = true;
       render();
-      setNote(state.routeStatus === 'live'
+      setNote(state.out.routeStatus === 'live'
         ? 'Distances routieres mesurees sur OpenStreetMap. Tarifs et horaires estimes.'
         : 'Tarifs, horaires et distances estimes par le modele.');
-      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      var panel = state.tab === 'compare' ? results : bestPanel;
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }).catch(function (err) {
       setNote(esc(err.message || 'Le calcul a echoue.'), true);
     }).then(function () {
@@ -782,7 +1092,6 @@
     fillCards();
     initTheme();
 
-    /* version autonome en un seul fichier : les appels reseau sont bloques */
     if (T.STANDALONE) {
       var live = $('#useLive');
       live.checked = false;
@@ -794,27 +1103,55 @@
 
     var d = new Date();
     d.setDate(d.getDate() + 21);
-    $('#date').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    var iso = function (x) { return x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); };
+    $('#date').value = iso(d);
     $('#date').min = new Date().toISOString().slice(0, 10);
+    var r = new Date(d.getTime() + 3 * 86400000);
+    $('#returnDate').value = iso(r);
+    $('#returnDate').min = $('#date').min;
 
     if (!restore()) {
       state.stops = [newStop('Paris'), newStop('Marseille')];
       state.stops[0].place = E.placeById('paris');
+      state.stops[0].anchor = { type: 'city' };
       state.stops[1].place = E.placeById('marseille');
+      state.stops[1].anchor = { type: 'city' };
     }
     renderStops();
     syncFuelFields();
 
+    if (global.location.hash === '#meilleur-itineraire') state.tab = 'best';
+    syncTabs();
+
     $('#addStop').addEventListener('click', function () {
       state.stops.splice(state.stops.length - 1, 0, newStop(''));
       renderStops();
-      var inputs = stopsBox.querySelectorAll('input');
+      var inputs = stopsBox.querySelectorAll('input[type="text"]');
       inputs[state.stops.length - 2].focus();
     });
     $('#reverse').addEventListener('click', function () {
       state.stops.reverse();
       renderStops();
       persist();
+    });
+    $('#roundTrip').addEventListener('change', function () {
+      $('#returnFields').hidden = !this.checked;
+      persist();
+    });
+    $('#modeAny').addEventListener('click', function () {
+      $('#modeCar').checked = true;
+      $('#modeTrain').checked = true;
+      $('#modePlane').checked = true;
+      state.tab = 'best';
+      syncTabs();
+      persist();
+      run(null);
+    });
+    $('#tabCompare').addEventListener('click', function () {
+      state.tab = 'compare'; syncTabs(); renderMap(); persist();
+    });
+    $('#tabBest').addEventListener('click', function () {
+      state.tab = 'best'; syncTabs(); renderMap(); persist();
     });
     $('#fuel').addEventListener('change', syncFuelFields);
     $('#tripForm').addEventListener('submit', run);

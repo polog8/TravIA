@@ -9,7 +9,7 @@ const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 
 const html = read('index.html');
 const css = read('assets/styles.css');
-const scripts = ['assets/data.js', 'assets/engine.js', 'assets/providers.js', 'assets/app.js'];
+const scripts = ['assets/data.js', 'assets/engine.js', 'assets/router.js', 'assets/map.js', 'assets/providers.js', 'assets/app.js'];
 
 const head = html.match(/<head>([\s\S]*?)<\/head>/)[1];
 const body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
