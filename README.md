@@ -73,6 +73,34 @@ python3 -m http.server 8000
 
 puis <http://127.0.0.1:8000>.
 
+## Mise en ligne
+
+Le workflow `.github/workflows/pages.yml` assemble le site et le déploie sur
+GitHub Pages à chaque poussée sur la branche de développement.
+
+Il échoue tant que Pages n'est pas ouvert sur le dépôt : GitHub renvoie
+`Create Pages site failed — Resource not accessible by integration`, car le
+dépôt est privé et Pages n'est pas disponible sur dépôt privé en formule
+gratuite. Une seule action, à faire une fois, débloque la publication :
+
+- rendre le dépôt public dans **Settings → General → Danger Zone → Change
+  visibility**, puis relancer le workflow depuis l'onglet **Actions** ;
+- ou, avec une formule GitHub Pro ou supérieure, ouvrir **Settings → Pages** et
+  choisir `GitHub Actions` comme source.
+
+L'adresse publiée sera `https://polog8.github.io/TravIA/`.
+
+En attendant, `dist/travia.html` est une version autonome : un seul fichier,
+style et scripts inclus, qui s'ouvre directement dans un navigateur et se
+partage tel quel. Elle se reconstruit à partir des sources :
+
+```
+node tools/build-standalone.js
+```
+
+Cette version n'appelle aucun service en ligne ; les distances routières y sont
+estimées par le modèle interne.
+
 ## Structure
 
 ```
@@ -82,6 +110,8 @@ assets/data.js      villes, gares, aéroports, opérateurs, compagnies, hypothè
 assets/engine.js    distances, cheminement réseau, durées, tarifs, horaires
 assets/providers.js accès à Nominatim et OSRM, avec repli silencieux
 assets/app.js       interface, saisie des points, rendu comparatif
+tools/              assemblage de la version autonome
+dist/travia.html    version autonome en un seul fichier
 ```
 
 ## Limites connues

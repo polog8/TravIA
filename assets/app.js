@@ -782,6 +782,16 @@
     fillCards();
     initTheme();
 
+    /* version autonome en un seul fichier : les appels reseau sont bloques */
+    if (T.STANDALONE) {
+      var live = $('#useLive');
+      live.checked = false;
+      live.disabled = true;
+      if (live.nextSibling) {
+        live.nextSibling.textContent = ' Version autonome : distances et durees calculees par le modele interne, sans appel aux services en ligne.';
+      }
+    }
+
     var d = new Date();
     d.setDate(d.getDate() + 21);
     $('#date').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());

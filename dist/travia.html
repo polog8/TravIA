@@ -1,0 +1,2509 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f7f5f1'/%3E%3Cpath d='M6 22h20M6 22l5-12M16 10v12M26 22l-5-12' stroke='%232f4858' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<title>TravIA — comparateur de trajets voiture, train, avion</title>
+<meta name="description" content="Simulateur d'itineraires multimodaux : compare la voiture, le train et l'avion sur un meme trajet, avec points de passage, horaires et prix par compagnie.">
+<style>
+/* TravIA — feuille de style
+   Palette sobre, filets d'un pixel, aucune ombre portee marquee,
+   aucun degrade. Trois teintes de mode : voiture, train, avion. */
+
+:root {
+  --paper: #f7f5f1;
+  --surface: #ffffff;
+  --surface-alt: #f1efe9;
+  --ink: #15181c;
+  --ink-soft: #5b6069;
+  --ink-faint: #8a8f98;
+  --rule: #dcd8cf;
+  --rule-strong: #b6b1a6;
+  --accent: #2f4858;
+  --accent-ink: #ffffff;
+  --accent-wash: #e8ecee;
+  --car: #8a6334;
+  --train: #2c6250;
+  --plane: #3a5a8c;
+  --alert: #8c3a2b;
+  --radius: 2px;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #14161a;
+    --surface: #1a1d22;
+    --surface-alt: #202429;
+    --ink: #e7e4dd;
+    --ink-soft: #a2a7af;
+    --ink-faint: #7c828b;
+    --rule: #2d323a;
+    --rule-strong: #454c56;
+    --accent: #9dbdd0;
+    --accent-ink: #14161a;
+    --accent-wash: #232a31;
+    --car: #c39a63;
+    --train: #79b09a;
+    --plane: #8aa8d4;
+    --alert: #d08475;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #14161a;
+  --surface: #1a1d22;
+  --surface-alt: #202429;
+  --ink: #e7e4dd;
+  --ink-soft: #a2a7af;
+  --ink-faint: #7c828b;
+  --rule: #2d323a;
+  --rule-strong: #454c56;
+  --accent: #9dbdd0;
+  --accent-ink: #14161a;
+  --accent-wash: #232a31;
+  --car: #c39a63;
+  --train: #79b09a;
+  --plane: #8aa8d4;
+  --alert: #d08475;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.55 var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, h3, h4 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+
+a { color: inherit; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--rule-strong); }
+a:hover { text-decoration-color: currentColor; }
+
+.wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+/* ------------------------------------------------------------------ entete */
+
+.masthead { border-bottom: 1px solid var(--rule); background: var(--surface); }
+.masthead__inner { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; padding-top: 18px; padding-bottom: 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.brand__name { font-family: var(--serif); font-size: 25px; letter-spacing: 0.02em; }
+.brand__line { color: var(--ink-soft); font-size: 13px; }
+.masthead__nav { display: flex; gap: 18px; font-size: 13px; color: var(--ink-soft); }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--rule-strong); }
+
+/* ------------------------------------------------------------------ trame */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 372px) minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+  padding-top: 32px;
+  padding-bottom: 48px;
+}
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; gap: 28px; }
+}
+
+/* ---------------------------------------------------------------- formulaire */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 22px;
+  position: sticky;
+  top: 20px;
+}
+@media (max-width: 900px) { .panel { position: static; } }
+
+.panel__title { font-size: 17px; margin-bottom: 14px; }
+
+.stops { display: flex; flex-direction: column; }
+
+.stop { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 10px; padding: 3px 0; position: relative; }
+.stop__key {
+  font: 600 11px/1 var(--mono);
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+}
+.stop--via .stop__key { border-style: dashed; }
+.stop__field { position: relative; }
+.stop input {
+  width: 100%;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+.stop input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.stop__drop {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 2px);
+  margin: 0; padding: 0; list-style: none;
+  background: var(--surface); border: 1px solid var(--rule-strong);
+  max-height: 260px; overflow-y: auto;
+}
+.stop__drop li { padding: 7px 10px; cursor: pointer; font-size: 13.5px; border-bottom: 1px solid var(--rule); }
+.stop__drop li:last-child { border-bottom: 0; }
+.stop__drop li:hover, .stop__drop li[aria-selected="true"] { background: var(--accent-wash); }
+.stop__drop .ac-sub { color: var(--ink-faint); font-size: 12px; display: block; }
+.stop__drop .ac-remote { color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.stop__extra { display: flex; align-items: center; gap: 5px; }
+.stop__hold {
+  width: 46px; font: inherit; font-size: 13px; text-align: right;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: var(--radius); padding: 6px 4px;
+}
+.stop__unit { font-size: 12px; color: var(--ink-faint); margin-right: 2px; }
+.stop__del {
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink-soft);
+  width: 26px; height: 26px; border-radius: var(--radius); cursor: pointer; line-height: 1; font-size: 15px;
+}
+.stop__del:hover { border-color: var(--alert); color: var(--alert); }
+.stop__spacer { grid-column: 2; height: 8px; border-left: 1px dotted var(--rule-strong); margin-left: -21px; }
+
+.stops__actions { display: flex; gap: 8px; margin: 12px 0 18px; }
+
+.field-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.field-grid--2 { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 460px) { .field-grid, .field-grid--2 { grid-template-columns: 1fr 1fr; } }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field__label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-soft); }
+.field input, .field select {
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: var(--radius); padding: 7px 8px; width: 100%;
+}
+.field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.modes { border: 0; padding: 0; margin: 20px 0 4px; }
+.modes legend { padding: 0; margin-bottom: 8px; }
+.mode-toggle { display: inline-block; margin-right: 6px; }
+.mode-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.mode-toggle__box {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 7px 11px; cursor: pointer; font-size: 13.5px; color: var(--ink-soft);
+}
+.mode-toggle__key { font: 600 10px/1 var(--mono); letter-spacing: 0.04em; }
+.mode-toggle input:checked + .mode-toggle__box { border-color: currentColor; color: var(--ink); background: var(--surface-alt); }
+.mode-toggle[data-mode="car"] input:checked + .mode-toggle__box { color: var(--car); border-color: var(--car); }
+.mode-toggle[data-mode="train"] input:checked + .mode-toggle__box { color: var(--train); border-color: var(--train); }
+.mode-toggle[data-mode="plane"] input:checked + .mode-toggle__box { color: var(--plane); border-color: var(--plane); }
+.mode-toggle input:focus-visible + .mode-toggle__box { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.opts { border-top: 1px solid var(--rule); padding: 12px 0 10px; margin-top: 14px; }
+.opts summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); list-style: none; display: flex; justify-content: space-between; }
+.opts summary::-webkit-details-marker { display: none; }
+.opts summary::after { content: "+"; font-family: var(--mono); color: var(--ink-faint); }
+.opts[open] summary::after { content: "\2013"; }
+.opts[open] summary { margin-bottom: 12px; color: var(--ink); }
+.opts .field-grid { margin-bottom: 10px; }
+
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); margin: 6px 0; }
+.check input { accent-color: var(--accent); }
+.check--live { border-top: 1px solid var(--rule); padding-top: 14px; margin-top: 14px; }
+
+.btn {
+  font: inherit; cursor: pointer; border-radius: var(--radius);
+  padding: 9px 14px; border: 1px solid var(--rule-strong); background: var(--surface); color: var(--ink);
+}
+.btn:hover { border-color: var(--accent); }
+.btn--ghost { font-size: 13px; padding: 6px 10px; color: var(--ink-soft); }
+.btn--primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn--primary:hover { filter: brightness(1.08); }
+.btn--primary[disabled] { opacity: 0.55; cursor: progress; }
+.btn--wide { width: 100%; margin-top: 18px; padding: 11px; }
+
+.form-note { font-size: 12.5px; color: var(--ink-soft); margin: 10px 0 0; min-height: 1em; }
+.form-note--error { color: var(--alert); }
+
+/* ------------------------------------------------------------------ resultats */
+
+.empty {
+  border: 1px dashed var(--rule-strong); border-radius: var(--radius);
+  padding: 40px 32px; max-width: 620px;
+}
+.empty h2 { font-size: 20px; margin-bottom: 10px; }
+.empty p { color: var(--ink-soft); margin: 0 0 10px; }
+.empty__hint { font-size: 13px; color: var(--ink-faint); }
+
+.rsection { margin-bottom: 34px; }
+.rsection__head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--rule-strong); padding-bottom: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.rsection__head h2 { font-size: 18px; }
+.rsection__note { font-size: 12px; color: var(--ink-faint); }
+
+.badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.badge {
+  font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 4px 8px; color: var(--ink-soft); background: var(--surface);
+}
+.badge--live { border-color: var(--train); color: var(--train); }
+.badge--model { border-color: var(--rule-strong); }
+
+table.grid { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); border: 1px solid var(--rule); }
+table.grid th, table.grid td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+table.grid thead th { font: 600 11px/1.3 var(--sans); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-soft); background: var(--surface-alt); }
+table.grid tbody tr:last-child td { border-bottom: 0; }
+table.grid td.num, table.grid th.num { text-align: right; white-space: nowrap; }
+.table-scroll { overflow-x: auto; }
+
+tr.mode-row td:first-child { border-left: 3px solid transparent; }
+tr.mode-row--car td:first-child { border-left-color: var(--car); }
+tr.mode-row--train td:first-child { border-left-color: var(--train); }
+tr.mode-row--plane td:first-child { border-left-color: var(--plane); }
+tr.mode-row--off td { color: var(--ink-faint); }
+.mode-name { font-weight: 600; }
+.mode-sub { display: block; font-size: 12px; color: var(--ink-soft); font-weight: 400; }
+.flag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); border: 1px solid var(--rule); padding: 1px 5px; border-radius: var(--radius); margin-left: 6px; white-space: nowrap; }
+.flag--best { color: var(--accent); border-color: var(--accent); }
+
+.bars { margin-top: 18px; display: grid; gap: 14px; }
+.bar { display: grid; grid-template-columns: 92px 1fr; gap: 12px; align-items: center; font-size: 12.5px; }
+.bar__label { color: var(--ink-soft); }
+.bar__track { position: relative; height: 20px; border: 1px solid var(--rule); background: var(--surface); }
+.bar__fill { position: absolute; inset: 0 auto 0 0; opacity: 0.85; }
+.bar__fill--car { background: var(--car); }
+.bar__fill--train { background: var(--train); }
+.bar__fill--plane { background: var(--plane); }
+.bar__value { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 11.5px; color: var(--ink); }
+.bars__caption { font-size: 11.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* segments */
+
+.leg { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); margin-bottom: 18px; }
+.leg__head { display: flex; justify-content: space-between; gap: 14px; align-items: baseline; padding: 14px 16px; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+.leg__title { font-size: 15.5px; font-family: var(--serif); }
+.leg__meta { font-size: 12.5px; color: var(--ink-soft); }
+.leg__tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+.tab {
+  flex: 1 1 33%; min-width: 150px; text-align: left;
+  border: 0; border-right: 1px solid var(--rule); border-bottom: 2px solid transparent;
+  background: var(--surface-alt); padding: 11px 14px; cursor: pointer; font: inherit; color: var(--ink-soft);
+}
+.tab:last-child { border-right: 0; }
+.tab__name { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; }
+.tab__main { display: block; font-size: 15px; color: var(--ink); margin-top: 3px; }
+.tab__sub { display: block; font-size: 12px; color: var(--ink-soft); }
+.tab[aria-selected="true"] { background: var(--surface); color: var(--ink); }
+.tab--car[aria-selected="true"] { border-bottom-color: var(--car); }
+.tab--train[aria-selected="true"] { border-bottom-color: var(--train); }
+.tab--plane[aria-selected="true"] { border-bottom-color: var(--plane); }
+.tab[disabled] { cursor: not-allowed; color: var(--ink-faint); }
+.tab[disabled] .tab__main { color: var(--ink-faint); }
+
+.leg__body { padding: 4px 16px 16px; }
+.leg__body table.grid { border-left: 0; border-right: 0; border-top: 0; }
+.offer-pick { accent-color: var(--accent); }
+tr.picked { background: var(--accent-wash); }
+.leg table.grid td:nth-child(2) { min-width: 172px; }
+.leg table.grid th, .leg table.grid td { padding: 9px 8px; }
+.leg table.grid td:first-child, .leg table.grid th:first-child { width: 28px; padding-right: 0; }
+.op-name { font-weight: 600; }
+.op-sub { display: block; font-size: 12px; color: var(--ink-soft); font-weight: 400; }
+.time { font-variant-numeric: tabular-nums; }
+.time__day { font-size: 11px; color: var(--alert); margin-left: 3px; }
+.unavailable { color: var(--ink-soft); font-size: 13.5px; padding: 16px 0; }
+
+.more { margin-top: 12px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.breakdown { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; color: var(--ink-soft); display: grid; gap: 4px; max-width: 420px; }
+.breakdown li { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--rule); padding-bottom: 3px; }
+.breakdown li strong { font-weight: 600; color: var(--ink); }
+
+.total {
+  position: sticky; bottom: 0; z-index: 20;
+  border: 1px solid var(--rule-strong); background: var(--surface);
+  border-radius: var(--radius); padding: 14px 16px;
+  display: flex; gap: 26px; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+}
+.total__set { display: flex; gap: 26px; flex-wrap: wrap; }
+.total__item { display: flex; flex-direction: column; }
+.total__key { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-soft); }
+.total__val { font-size: 19px; font-family: var(--serif); }
+.total__path { font-size: 12.5px; color: var(--ink-soft); }
+
+/* ------------------------------------------------------------------ methode */
+
+.method { padding-top: 34px; padding-bottom: 34px; border-top: 1px solid var(--rule); }
+.method h2 { font-size: 18px; margin-bottom: 16px; }
+.method__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 26px; }
+.method h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--sans); color: var(--ink-soft); margin-bottom: 6px; }
+.method p { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+
+.footer { border-top: 1px solid var(--rule); background: var(--surface); }
+.footer__inner { padding: 20px 24px; display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.footer p { margin: 0; font-size: 12.5px; color: var(--ink-faint); }
+
+.spinner { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--rule-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+@media print {
+  .panel, .masthead__nav, .total, .leg__tabs { display: none; }
+  .layout { grid-template-columns: 1fr; }
+  body { background: #fff; }
+}
+</style>
+
+
+<header class="masthead">
+  <div class="wrap masthead__inner">
+    <div class="brand">
+      <span class="brand__name">TravIA</span>
+      <span class="brand__line">Comparateur d'itineraires voiture, train et avion</span>
+    </div>
+    <nav class="masthead__nav">
+      <a href="#methode">Methode</a>
+      <button type="button" id="themeToggle" class="linkish" aria-label="Changer de theme">Theme</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap layout">
+
+  <form class="panel" id="tripForm" autocomplete="off">
+    <h2 class="panel__title">Itineraire</h2>
+
+    <div id="stops" class="stops"></div>
+
+    <div class="stops__actions">
+      <button type="button" class="btn btn--ghost" id="addStop">Ajouter une etape</button>
+      <button type="button" class="btn btn--ghost" id="reverse">Inverser</button>
+    </div>
+
+    <div class="field-grid">
+      <label class="field">
+        <span class="field__label">Date de depart</span>
+        <input type="date" id="date" required>
+      </label>
+      <label class="field">
+        <span class="field__label">Heure</span>
+        <input type="time" id="time" value="08:00" required>
+      </label>
+      <label class="field">
+        <span class="field__label">Voyageurs</span>
+        <input type="number" id="passengers" min="1" max="9" value="1">
+      </label>
+    </div>
+
+    <fieldset class="modes">
+      <legend class="field__label">Modes compares</legend>
+      <label class="mode-toggle" data-mode="car">
+        <input type="checkbox" id="modeCar" checked>
+        <span class="mode-toggle__box"><span class="mode-toggle__key" aria-hidden="true">VO</span>Voiture</span>
+      </label>
+      <label class="mode-toggle" data-mode="train">
+        <input type="checkbox" id="modeTrain" checked>
+        <span class="mode-toggle__box"><span class="mode-toggle__key" aria-hidden="true">TR</span>Train</span>
+      </label>
+      <label class="mode-toggle" data-mode="plane">
+        <input type="checkbox" id="modePlane" checked>
+        <span class="mode-toggle__box"><span class="mode-toggle__key" aria-hidden="true">AV</span>Avion</span>
+      </label>
+    </fieldset>
+
+    <details class="opts">
+      <summary>Hypotheses voiture</summary>
+      <div class="field-grid field-grid--2">
+        <label class="field">
+          <span class="field__label">Motorisation</span>
+          <select id="fuel">
+            <option value="essence">Essence</option>
+            <option value="diesel">Diesel</option>
+            <option value="hybride">Hybride</option>
+            <option value="electrique">Electrique</option>
+          </select>
+        </label>
+        <label class="field" id="consField">
+          <span class="field__label">Consommation (L/100 km)</span>
+          <input type="number" id="consumption" step="0.1" min="1" max="25" value="6.2">
+        </label>
+        <label class="field" id="priceField">
+          <span class="field__label">Prix du carburant (EUR/L)</span>
+          <input type="number" id="fuelPrice" step="0.01" min="0.5" max="4" value="1.79">
+        </label>
+        <label class="field" id="kwhField" hidden>
+          <span class="field__label">Consommation (kWh/100 km)</span>
+          <input type="number" id="kwhPer100" step="0.5" min="8" max="40" value="17.5">
+        </label>
+        <label class="field" id="kwhPriceField" hidden>
+          <span class="field__label">Prix de la recharge (EUR/kWh)</span>
+          <input type="number" id="kwhPrice" step="0.01" min="0.05" max="1" value="0.32">
+        </label>
+        <label class="field">
+          <span class="field__label">Personnes dans le vehicule</span>
+          <input type="number" id="occupants" min="1" max="9" value="1">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="tolls" checked> Inclure les peages</label>
+      <label class="check"><input type="checkbox" id="includeWear"> Inclure l'usure et l'entretien (0,06 EUR/km)</label>
+    </details>
+
+    <details class="opts">
+      <summary>Hypotheses train</summary>
+      <div class="field-grid field-grid--2">
+        <label class="field">
+          <span class="field__label">Classe</span>
+          <select id="railClass">
+            <option value="2de">Seconde</option>
+            <option value="1re">Premiere</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">Carte de reduction</span>
+          <select id="railCard"></select>
+        </label>
+        <label class="field">
+          <span class="field__label">Acces a la gare (min)</span>
+          <input type="number" id="railTransferMin" min="0" max="120" value="20">
+        </label>
+      </div>
+    </details>
+
+    <details class="opts">
+      <summary>Hypotheses avion</summary>
+      <div class="field-grid field-grid--2">
+        <label class="field">
+          <span class="field__label">Enregistrement et surete (min)</span>
+          <input type="number" id="checkinMin" min="30" max="240" value="90">
+        </label>
+        <label class="field">
+          <span class="field__label">Debarquement et bagages (min)</span>
+          <input type="number" id="disembarkMin" min="10" max="120" value="30">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="hold"> Bagage en soute</label>
+    </details>
+
+    <label class="check check--live"><input type="checkbox" id="useLive" checked> Interroger OpenStreetMap et OSRM pour les distances routieres reelles</label>
+
+    <button type="submit" class="btn btn--primary btn--wide" id="compute">Comparer les trajets</button>
+    <p class="form-note" id="formNote"></p>
+  </form>
+
+  <section class="results" id="results" aria-live="polite">
+    <div class="empty">
+      <h2>Comparer un trajet</h2>
+      <p>Renseignez un depart, une arrivee et autant d'etapes que necessaire. TravIA calcule pour chaque segment la voiture, le train et l'avion, puis detaille les departs et les tarifs des compagnies qui exploitent la relation.</p>
+      <p class="empty__hint">Exemples : Paris - Marseille, Lyon - Barcelone via Montpellier, Nantes - Berlin.</p>
+    </div>
+  </section>
+
+</main>
+
+<section class="wrap method" id="methode">
+  <h2>Methode et sources</h2>
+  <div class="method__grid">
+    <div>
+      <h3>Ce qui est mesure</h3>
+      <p>Lorsque la connexion aux services ouverts est active, les distances et les durees routieres proviennent d'<strong>OSRM</strong>, calculees sur le graphe OpenStreetMap en respectant l'ordre des points de passage. Les lieux absents du referentiel sont localises par <strong>Nominatim</strong>. En cas d'indisponibilite, le calcul bascule sur le modele interne et le resultat est signale comme estime.</p>
+    </div>
+    <div>
+      <h3>Ce qui est estime</h3>
+      <p>Aucun distributeur ne publie librement ses tarifs ni ses horaires. Les prix et les horaires ferroviaires et aeriens sont donc <strong>reconstitues par un modele</strong> : distance, vitesse commerciale du corridor, grille tarifaire de l'operateur, delai avant le depart, jour, heure et saison. Ce sont des ordres de grandeur destines a la comparaison, pas des offres reservables.</p>
+    </div>
+    <div>
+      <h3>Calage du modele</h3>
+      <p>Les vitesses ferroviaires sont calees par corridor sur les horaires publies, les temps de parcours routiers sur les temps observes hors incident, et les grilles tarifaires sur les prix affiches par les operateurs. Confronte a dix-neuf relations europeennes de reference, le modele ferroviaire s'ecarte en moyenne de 16 % des horaires reels ; l'ecart est plus marque sur les relations courtes empruntant des lignes classiques.</p>
+    </div>
+    <div>
+      <h3>Emissions</h3>
+      <p>Les emissions sont exprimees en kilogrammes de CO<sub>2</sub> equivalent par voyageur : voiture selon la motorisation et le nombre d'occupants, train selon la nature du materiel, avion selon la distance. Elles ne comprennent pas les effets non-CO<sub>2</sub> de l'aviation.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer__inner">
+    <p>TravIA — outil de simulation. Les tarifs et horaires sont des estimations, a verifier aupres des operateurs avant reservation.</p>
+    <p>Donnees geographiques : OpenStreetMap et ses contributeurs. Calcul routier : projet OSRM.</p>
+  </div>
+</footer>
+<script>
+window.TravIA = { STANDALONE: true };
+/* assets/data.js */
+/* TravIA — Referentiel de lieux, operateurs ferroviaires et compagnies aeriennes.
+   Les parametres tarifaires sont des ordres de grandeur calibres sur les grilles
+   publiques des operateurs (prix au kilometre, part fixe, politique bagages).
+   Ils alimentent le moteur d'estimation de assets/engine.js. */
+(function (global) {
+  'use strict';
+
+  var T = global.TravIA || (global.TravIA = {});
+
+  /* --- fabriques compactes -------------------------------------------------- */
+  function A(iata, name, transferMin, kind) {
+    return { iata: iata, name: name, transferMin: transferMin, kind: kind || 'main' };
+  }
+  function R(station, hsr) {
+    return { station: station, hsr: !!hsr };
+  }
+  function P(id, name, country, cc, lat, lon, weight, land, rail, air) {
+    return {
+      id: id, name: name, country: country, cc: cc, lat: lat, lon: lon,
+      weight: weight, land: land, rail: rail || null, air: air || []
+    };
+  }
+
+  /* --- lieux ---------------------------------------------------------------
+     weight : intensite de trafic (1 a 5) -> frequence des departs simules
+     land   : masse terrestre, sert a savoir si la route/le rail est possible  */
+  T.PLACES = [
+    /* France */
+    P('paris', 'Paris', 'France', 'FR', 48.8566, 2.3522, 5, 'eu', R('Paris (gares parisiennes)', true), [A('CDG', 'Paris-Charles-de-Gaulle', 55), A('ORY', 'Paris-Orly', 45), A('BVA', 'Beauvais-Tille', 95, 'lowcost')]),
+    P('lyon', 'Lyon', 'France', 'FR', 45.7640, 4.8357, 5, 'eu', R('Lyon Part-Dieu', true), [A('LYS', 'Lyon-Saint-Exupery', 45)]),
+    P('marseille', 'Marseille', 'France', 'FR', 43.2965, 5.3698, 4, 'eu', R('Marseille Saint-Charles', true), [A('MRS', 'Marseille-Provence', 40)]),
+    P('toulouse', 'Toulouse', 'France', 'FR', 43.6047, 1.4442, 4, 'eu', R('Toulouse Matabiau', false), [A('TLS', 'Toulouse-Blagnac', 30)]),
+    P('nice', 'Nice', 'France', 'FR', 43.7102, 7.2620, 4, 'eu', R('Nice-Ville', false), [A('NCE', 'Nice-Cote d Azur', 25)]),
+    P('nantes', 'Nantes', 'France', 'FR', 47.2184, -1.5536, 4, 'eu', R('Nantes', true), [A('NTE', 'Nantes-Atlantique', 30)]),
+    P('strasbourg', 'Strasbourg', 'France', 'FR', 48.5734, 7.7521, 4, 'eu', R('Strasbourg', true), [A('SXB', 'Strasbourg-Entzheim', 25)]),
+    P('montpellier', 'Montpellier', 'France', 'FR', 43.6108, 3.8767, 3, 'eu', R('Montpellier Saint-Roch', true), [A('MPL', 'Montpellier-Mediterranee', 25)]),
+    P('bordeaux', 'Bordeaux', 'France', 'FR', 44.8378, -0.5792, 4, 'eu', R('Bordeaux Saint-Jean', true), [A('BOD', 'Bordeaux-Merignac', 35)]),
+    P('lille', 'Lille', 'France', 'FR', 50.6292, 3.0573, 4, 'eu', R('Lille Europe / Flandres', true), [A('LIL', 'Lille-Lesquin', 30)]),
+    P('rennes', 'Rennes', 'France', 'FR', 48.1173, -1.6778, 3, 'eu', R('Rennes', true), [A('RNS', 'Rennes-Saint-Jacques', 20)]),
+    P('reims', 'Reims', 'France', 'FR', 49.2583, 4.0317, 2, 'eu', R('Reims', true), []),
+    P('lehavre', 'Le Havre', 'France', 'FR', 49.4944, 0.1079, 2, 'eu', R('Le Havre', false), []),
+    P('saintetienne', 'Saint-Etienne', 'France', 'FR', 45.4397, 4.3872, 2, 'eu', R('Saint-Etienne Chateaucreux', false), []),
+    P('toulon', 'Toulon', 'France', 'FR', 43.1242, 5.9280, 2, 'eu', R('Toulon', true), [A('TLN', 'Toulon-Hyeres', 30)]),
+    P('grenoble', 'Grenoble', 'France', 'FR', 45.1885, 5.7245, 3, 'eu', R('Grenoble', false), [A('GNB', 'Grenoble-Alpes-Isere', 50)]),
+    P('dijon', 'Dijon', 'France', 'FR', 47.3220, 5.0415, 2, 'eu', R('Dijon-Ville', true), []),
+    P('angers', 'Angers', 'France', 'FR', 47.4784, -0.5632, 2, 'eu', R('Angers Saint-Laud', true), []),
+    P('nimes', 'Nimes', 'France', 'FR', 43.8367, 4.3601, 2, 'eu', R('Nimes', true), []),
+    P('clermont', 'Clermont-Ferrand', 'France', 'FR', 45.7772, 3.0870, 2, 'eu', R('Clermont-Ferrand', false), [A('CFE', 'Clermont-Ferrand-Auvergne', 25)]),
+    P('tours', 'Tours', 'France', 'FR', 47.3941, 0.6848, 2, 'eu', R('Tours / Saint-Pierre-des-Corps', true), []),
+    P('limoges', 'Limoges', 'France', 'FR', 45.8336, 1.2611, 2, 'eu', R('Limoges-Benedictins', false), []),
+    P('brest', 'Brest', 'France', 'FR', 48.3904, -4.4861, 2, 'eu', R('Brest', true), [A('BES', 'Brest-Bretagne', 25)]),
+    P('perpignan', 'Perpignan', 'France', 'FR', 42.6887, 2.8948, 2, 'eu', R('Perpignan', true), [A('PGF', 'Perpignan-Rivesaltes', 20)]),
+    P('metz', 'Metz', 'France', 'FR', 49.1193, 6.1757, 2, 'eu', R('Metz-Ville', true), []),
+    P('besancon', 'Besancon', 'France', 'FR', 47.2378, 6.0241, 2, 'eu', R('Besancon Viotte', true), []),
+    P('orleans', 'Orleans', 'France', 'FR', 47.9029, 1.9093, 2, 'eu', R('Orleans', false), []),
+    P('rouen', 'Rouen', 'France', 'FR', 49.4432, 1.0993, 2, 'eu', R('Rouen Rive-Droite', false), []),
+    P('mulhouse', 'Mulhouse', 'France', 'FR', 47.7508, 7.3359, 2, 'eu', R('Mulhouse-Ville', true), [A('BSL', 'EuroAirport Bale-Mulhouse', 40)]),
+    P('caen', 'Caen', 'France', 'FR', 49.1829, -0.3707, 2, 'eu', R('Caen', false), []),
+    P('nancy', 'Nancy', 'France', 'FR', 48.6921, 6.1844, 2, 'eu', R('Nancy', true), []),
+    P('avignon', 'Avignon', 'France', 'FR', 43.9493, 4.8055, 2, 'eu', R('Avignon TGV', true), []),
+    P('biarritz', 'Biarritz', 'France', 'FR', 43.4832, -1.5586, 2, 'eu', R('Biarritz', false), [A('BIQ', 'Biarritz-Pays basque', 15)]),
+    P('pau', 'Pau', 'France', 'FR', 43.2951, -0.3708, 2, 'eu', R('Pau', false), [A('PUF', 'Pau-Pyrenees', 20)]),
+    P('larochelle', 'La Rochelle', 'France', 'FR', 46.1603, -1.1511, 2, 'eu', R('La Rochelle-Ville', false), [A('LRH', 'La Rochelle-Ile de Re', 15)]),
+    P('chambery', 'Chambery', 'France', 'FR', 45.5646, 5.9178, 2, 'eu', R('Chambery-Challes-les-Eaux', false), []),
+    P('annecy', 'Annecy', 'France', 'FR', 45.8992, 6.1294, 2, 'eu', R('Annecy', false), []),
+    P('ajaccio', 'Ajaccio', 'France', 'FR', 41.9192, 8.7386, 2, 'corse', R('Ajaccio', false), [A('AJA', 'Ajaccio-Napoleon-Bonaparte', 20)]),
+    /* Royaume-Uni et Irlande */
+    P('londres', 'Londres', 'Royaume-Uni', 'GB', 51.5074, -0.1278, 5, 'gb', R('London St Pancras', true), [A('LHR', 'Heathrow', 55), A('LGW', 'Gatwick', 60), A('STN', 'Stansted', 75, 'lowcost')]),
+    P('manchester', 'Manchester', 'Royaume-Uni', 'GB', 53.4808, -2.2426, 3, 'gb', R('Manchester Piccadilly', true), [A('MAN', 'Manchester', 30)]),
+    P('edimbourg', 'Edimbourg', 'Royaume-Uni', 'GB', 55.9533, -3.1883, 3, 'gb', R('Edinburgh Waverley', true), [A('EDI', 'Edinburgh', 30)]),
+    P('dublin', 'Dublin', 'Irlande', 'IE', 53.3498, -6.2603, 3, 'ie', R('Dublin Connolly', false), [A('DUB', 'Dublin', 35)]),
+    /* Benelux, Allemagne, Suisse, Autriche */
+    P('bruxelles', 'Bruxelles', 'Belgique', 'BE', 50.8503, 4.3517, 4, 'eu', R('Bruxelles-Midi', true), [A('BRU', 'Bruxelles-National', 35), A('CRL', 'Bruxelles-Charleroi', 70, 'lowcost')]),
+    P('anvers', 'Anvers', 'Belgique', 'BE', 51.2194, 4.4025, 2, 'eu', R('Antwerpen-Centraal', true), []),
+    P('amsterdam', 'Amsterdam', 'Pays-Bas', 'NL', 52.3676, 4.9041, 4, 'eu', R('Amsterdam Centraal', true), [A('AMS', 'Schiphol', 30)]),
+    P('rotterdam', 'Rotterdam', 'Pays-Bas', 'NL', 51.9244, 4.4777, 3, 'eu', R('Rotterdam Centraal', true), []),
+    P('luxembourg', 'Luxembourg', 'Luxembourg', 'LU', 49.6116, 6.1319, 2, 'eu', R('Luxembourg', false), [A('LUX', 'Luxembourg-Findel', 20)]),
+    P('cologne', 'Cologne', 'Allemagne', 'DE', 50.9375, 6.9603, 3, 'eu', R('Koln Hauptbahnhof', true), [A('CGN', 'Cologne-Bonn', 30)]),
+    P('francfort', 'Francfort', 'Allemagne', 'DE', 50.1109, 8.6821, 4, 'eu', R('Frankfurt Hauptbahnhof', true), [A('FRA', 'Francfort', 25)]),
+    P('berlin', 'Berlin', 'Allemagne', 'DE', 52.5200, 13.4050, 4, 'eu', R('Berlin Hauptbahnhof', true), [A('BER', 'Berlin-Brandebourg', 45)]),
+    P('munich', 'Munich', 'Allemagne', 'DE', 48.1351, 11.5820, 4, 'eu', R('Munchen Hauptbahnhof', true), [A('MUC', 'Munich', 45)]),
+    P('hambourg', 'Hambourg', 'Allemagne', 'DE', 53.5511, 9.9937, 3, 'eu', R('Hamburg Hauptbahnhof', true), [A('HAM', 'Hambourg', 30)]),
+    P('stuttgart', 'Stuttgart', 'Allemagne', 'DE', 48.7758, 9.1829, 3, 'eu', R('Stuttgart Hauptbahnhof', true), [A('STR', 'Stuttgart', 30)]),
+    P('dusseldorf', 'Dusseldorf', 'Allemagne', 'DE', 51.2277, 6.7735, 3, 'eu', R('Dusseldorf Hauptbahnhof', true), [A('DUS', 'Dusseldorf', 25)]),
+    P('zurich', 'Zurich', 'Suisse', 'CH', 47.3769, 8.5417, 4, 'eu', R('Zurich Hauptbahnhof', true), [A('ZRH', 'Zurich', 20)]),
+    P('geneve', 'Geneve', 'Suisse', 'CH', 46.2044, 6.1432, 3, 'eu', R('Geneve-Cornavin', true), [A('GVA', 'Geneve-Cointrin', 20)]),
+    P('berne', 'Berne', 'Suisse', 'CH', 46.9480, 7.4474, 2, 'eu', R('Bern', true), []),
+    P('bale', 'Bale', 'Suisse', 'CH', 47.5596, 7.5886, 3, 'eu', R('Basel SBB', true), [A('BSL', 'EuroAirport Bale-Mulhouse', 25)]),
+    P('vienne', 'Vienne', 'Autriche', 'AT', 48.2082, 16.3738, 4, 'eu', R('Wien Hauptbahnhof', true), [A('VIE', 'Vienne-Schwechat', 35)]),
+    /* Europe du Sud */
+    P('milan', 'Milan', 'Italie', 'IT', 45.4642, 9.1900, 4, 'eu', R('Milano Centrale', true), [A('MXP', 'Malpensa', 55), A('LIN', 'Linate', 25), A('BGY', 'Bergame-Orio al Serio', 65, 'lowcost')]),
+    P('turin', 'Turin', 'Italie', 'IT', 45.0703, 7.6869, 3, 'eu', R('Torino Porta Nuova', true), [A('TRN', 'Turin-Caselle', 35)]),
+    P('rome', 'Rome', 'Italie', 'IT', 41.9028, 12.4964, 5, 'eu', R('Roma Termini', true), [A('FCO', 'Fiumicino', 45), A('CIA', 'Ciampino', 40, 'lowcost')]),
+    P('florence', 'Florence', 'Italie', 'IT', 43.7696, 11.2558, 3, 'eu', R('Firenze Santa Maria Novella', true), [A('FLR', 'Florence-Peretola', 25)]),
+    P('venise', 'Venise', 'Italie', 'IT', 45.4408, 12.3155, 3, 'eu', R('Venezia Santa Lucia', true), [A('VCE', 'Venise-Marco Polo', 40)]),
+    P('naples', 'Naples', 'Italie', 'IT', 40.8518, 14.2681, 3, 'eu', R('Napoli Centrale', true), [A('NAP', 'Naples-Capodichino', 25)]),
+    P('bologne', 'Bologne', 'Italie', 'IT', 44.4949, 11.3426, 3, 'eu', R('Bologna Centrale', true), [A('BLQ', 'Bologne-Marconi', 20)]),
+    P('barcelone', 'Barcelone', 'Espagne', 'ES', 41.3874, 2.1686, 4, 'eu', R('Barcelona Sants', true), [A('BCN', 'Barcelone-El Prat', 35)]),
+    P('madrid', 'Madrid', 'Espagne', 'ES', 40.4168, -3.7038, 5, 'eu', R('Madrid Atocha', true), [A('MAD', 'Madrid-Barajas', 40)]),
+    P('valence', 'Valence (Espagne)', 'Espagne', 'ES', 39.4699, -0.3763, 3, 'eu', R('Valencia Joaquin Sorolla', true), [A('VLC', 'Valence', 25)]),
+    P('seville', 'Seville', 'Espagne', 'ES', 37.3891, -5.9845, 3, 'eu', R('Sevilla Santa Justa', true), [A('SVQ', 'Seville', 25)]),
+    P('bilbao', 'Bilbao', 'Espagne', 'ES', 43.2630, -2.9350, 2, 'eu', R('Bilbao-Abando', false), [A('BIO', 'Bilbao', 25)]),
+    P('malaga', 'Malaga', 'Espagne', 'ES', 36.7213, -4.4214, 3, 'eu', R('Malaga Maria Zambrano', true), [A('AGP', 'Malaga-Costa del Sol', 25)]),
+    P('palma', 'Palma de Majorque', 'Espagne', 'ES', 39.5696, 2.6502, 3, 'baleares', null, [A('PMI', 'Palma de Majorque', 25)]),
+    P('lisbonne', 'Lisbonne', 'Portugal', 'PT', 38.7223, -9.1393, 4, 'eu', R('Lisboa Oriente', false), [A('LIS', 'Lisbonne-Humberto Delgado', 30)]),
+    P('porto', 'Porto', 'Portugal', 'PT', 41.1579, -8.6291, 3, 'eu', R('Porto Campanha', false), [A('OPO', 'Porto-Francisco Sa Carneiro', 30)]),
+    P('athenes', 'Athenes', 'Grece', 'GR', 37.9838, 23.7275, 3, 'eu', R('Athinai', false), [A('ATH', 'Athenes-Elefthenios-Venizelos', 45)]),
+    /* Europe centrale et du Nord */
+    P('prague', 'Prague', 'Republique tcheque', 'CZ', 50.0755, 14.4378, 3, 'eu', R('Praha hlavni nadrazi', false), [A('PRG', 'Prague-Vaclav Havel', 35)]),
+    P('budapest', 'Budapest', 'Hongrie', 'HU', 47.4979, 19.0402, 3, 'eu', R('Budapest Keleti', false), [A('BUD', 'Budapest-Ferenc Liszt', 40)]),
+    P('varsovie', 'Varsovie', 'Pologne', 'PL', 52.2297, 21.0122, 3, 'eu', R('Warszawa Centralna', true), [A('WAW', 'Varsovie-Chopin', 30)]),
+    P('cracovie', 'Cracovie', 'Pologne', 'PL', 50.0647, 19.9450, 2, 'eu', R('Krakow Glowny', false), [A('KRK', 'Cracovie-Balice', 30)]),
+    P('copenhague', 'Copenhague', 'Danemark', 'DK', 55.6761, 12.5683, 3, 'eu', R('Kobenhavn H', false), [A('CPH', 'Copenhague-Kastrup', 25)]),
+    P('stockholm', 'Stockholm', 'Suede', 'SE', 59.3293, 18.0686, 3, 'eu', R('Stockholm Centralstation', true), [A('ARN', 'Stockholm-Arlanda', 45)]),
+    P('oslo', 'Oslo', 'Norvege', 'NO', 59.9139, 10.7522, 3, 'eu', R('Oslo Sentralstasjon', false), [A('OSL', 'Oslo-Gardermoen', 40)]),
+    P('helsinki', 'Helsinki', 'Finlande', 'FI', 60.1699, 24.9384, 3, 'fi', R('Helsinki', false), [A('HEL', 'Helsinki-Vantaa', 35)]),
+    P('bucarest', 'Bucarest', 'Roumanie', 'RO', 44.4268, 26.1025, 2, 'eu', R('Bucuresti Nord', false), [A('OTP', 'Bucarest-Otopeni', 40)]),
+    P('istanbul', 'Istanbul', 'Turquie', 'TR', 41.0082, 28.9784, 4, 'eu', R('Istanbul Halkali', false), [A('IST', 'Istanbul', 60)]),
+    /* Afrique du Nord et Moyen-Orient */
+    P('marrakech', 'Marrakech', 'Maroc', 'MA', 31.6295, -7.9811, 3, 'af', R('Marrakech', false), [A('RAK', 'Marrakech-Menara', 20)]),
+    P('casablanca', 'Casablanca', 'Maroc', 'MA', 33.5731, -7.5898, 3, 'af', R('Casa-Voyageurs', false), [A('CMN', 'Mohammed-V', 40)]),
+    P('tunis', 'Tunis', 'Tunisie', 'TN', 36.8065, 10.1815, 2, 'af', R('Tunis', false), [A('TUN', 'Tunis-Carthage', 25)]),
+    P('alger', 'Alger', 'Algerie', 'DZ', 36.7538, 3.0588, 2, 'af', R('Alger', false), [A('ALG', 'Houari-Boumediene', 35)]),
+    P('lecaire', 'Le Caire', 'Egypte', 'EG', 30.0444, 31.2357, 3, 'af', R('Ramses', false), [A('CAI', 'Le Caire', 45)]),
+    P('dubai', 'Dubai', 'Emirats arabes unis', 'AE', 25.2048, 55.2708, 4, 'asie', null, [A('DXB', 'Dubai International', 35)]),
+    /* Ameriques, Asie, Oceanie */
+    P('newyork', 'New York', 'Etats-Unis', 'US', 40.7128, -74.0060, 5, 'am-n', R('New York Penn Station', false), [A('JFK', 'John F. Kennedy', 65), A('EWR', 'Newark', 55)]),
+    P('montreal', 'Montreal', 'Canada', 'CA', 45.5017, -73.5673, 3, 'am-n', R('Gare Centrale', false), [A('YUL', 'Montreal-Trudeau', 35)]),
+    P('toronto', 'Toronto', 'Canada', 'CA', 43.6532, -79.3832, 3, 'am-n', R('Union Station', false), [A('YYZ', 'Toronto-Pearson', 40)]),
+    P('losangeles', 'Los Angeles', 'Etats-Unis', 'US', 34.0522, -118.2437, 4, 'am-n', null, [A('LAX', 'Los Angeles', 50)]),
+    P('sanfrancisco', 'San Francisco', 'Etats-Unis', 'US', 37.7749, -122.4194, 4, 'am-n', null, [A('SFO', 'San Francisco', 40)]),
+    P('miami', 'Miami', 'Etats-Unis', 'US', 25.7617, -80.1918, 3, 'am-n', null, [A('MIA', 'Miami', 35)]),
+    P('mexico', 'Mexico', 'Mexique', 'MX', 19.4326, -99.1332, 3, 'am-n', null, [A('MEX', 'Mexico-Benito Juarez', 45)]),
+    P('saopaulo', 'Sao Paulo', 'Bresil', 'BR', -23.5505, -46.6333, 4, 'am-s', null, [A('GRU', 'Sao Paulo-Guarulhos', 60)]),
+    P('buenosaires', 'Buenos Aires', 'Argentine', 'AR', -34.6037, -58.3816, 3, 'am-s', null, [A('EZE', 'Ezeiza', 60)]),
+    P('dakar', 'Dakar', 'Senegal', 'SN', 14.7167, -17.4677, 2, 'af', null, [A('DSS', 'Blaise-Diagne', 60)]),
+    P('johannesburg', 'Johannesburg', 'Afrique du Sud', 'ZA', -26.2041, 28.0473, 3, 'af', null, [A('JNB', 'O. R. Tambo', 40)]),
+    P('delhi', 'Delhi', 'Inde', 'IN', 28.6139, 77.2090, 4, 'asie', null, [A('DEL', 'Indira-Gandhi', 50)]),
+    P('bangkok', 'Bangkok', 'Thailande', 'TH', 13.7563, 100.5018, 4, 'asie', null, [A('BKK', 'Suvarnabhumi', 50)]),
+    P('singapour', 'Singapour', 'Singapour', 'SG', 1.3521, 103.8198, 4, 'asie', null, [A('SIN', 'Changi', 35)]),
+    P('shanghai', 'Shanghai', 'Chine', 'CN', 31.2304, 121.4737, 4, 'asie', R('Shanghai Hongqiao', true), [A('PVG', 'Shanghai-Pudong', 55)]),
+    P('tokyo', 'Tokyo', 'Japon', 'JP', 35.6762, 139.6503, 5, 'jp', R('Tokyo', true), [A('HND', 'Haneda', 35), A('NRT', 'Narita', 75)]),
+    P('seoul', 'Seoul', 'Coree du Sud', 'KR', 37.5665, 126.9780, 4, 'asie', R('Seoul', true), [A('ICN', 'Incheon', 60)]),
+    P('sydney', 'Sydney', 'Australie', 'AU', -33.8688, 151.2093, 4, 'oceanie', null, [A('SYD', 'Sydney-Kingsford Smith', 30)])
+  ];
+
+  /* --- axes ferroviaires --------------------------------------------------
+     Les reseaux francais et espagnol sont en etoile : une relation est rapide
+     si elle part du noeud central ou si elle suit un meme axe radial. Les
+     transversales (Lyon - Bordeaux, Nantes - Marseille) empruntent des lignes
+     classiques et sont nettement plus lentes. */
+  T.RAIL_HUBS = { FR: 'paris', ES: 'madrid' };
+  T.RAIL_AXES = {
+    /* France */
+    lyon: 'se', saintetienne: 'se', grenoble: 'se', chambery: 'se', annecy: 'se',
+    valence: 'se', avignon: 'se', nimes: 'se', montpellier: 'se', perpignan: 'se',
+    marseille: 'se', toulon: 'se', nice: 'se', dijon: 'se', besancon: 'se',
+    bordeaux: 'at', tours: 'at', limoges: 'at', biarritz: 'at', bayonne: 'at',
+    pau: 'at', larochelle: 'at', toulouse: 'at', clermont: 'at',
+    nantes: 'ouest', angers: 'ouest', rennes: 'ouest', brest: 'ouest',
+    caen: 'ouest', rouen: 'ouest', lehavre: 'ouest', orleans: 'ouest',
+    lille: 'nord', reims: 'est', metz: 'est', nancy: 'est', strasbourg: 'est',
+    mulhouse: 'est',
+    /* Espagne */
+    barcelone: 'es-ne', valencia: 'es-e', seville: 'es-sud', malaga: 'es-sud',
+    bilbao: 'es-nord'
+  };
+
+  /* --- liaisons terrestres entre masses -------------------------------------
+     Ex. tunnel sous la Manche : la voiture passe par la navette (supplement),
+     le train par Eurostar. */
+  T.LAND_LINKS = [
+    { a: 'eu', b: 'gb', car: { extraMin: 75, extraCost: 110, label: 'Navette Eurotunnel (Calais - Folkestone)' }, rail: true },
+    { a: 'gb', b: 'ie', car: { extraMin: 220, extraCost: 130, label: 'Ferry Holyhead - Dublin' }, rail: false },
+    { a: 'eu', b: 'corse', car: { extraMin: 660, extraCost: 190, label: 'Ferry vers la Corse' }, rail: false },
+    { a: 'eu', b: 'baleares', car: { extraMin: 480, extraCost: 175, label: 'Ferry vers les Baleares' }, rail: false },
+    { a: 'eu', b: 'fi', car: { extraMin: 150, extraCost: 90, label: 'Ferry Stockholm - Helsinki' }, rail: false }
+  ];
+
+  /* --- operateurs ferroviaires ---------------------------------------------
+     base    : part fixe du billet (EUR)
+     perKm   : part kilometrique (EUR/km) en seconde classe
+     hsr     : materiel a grande vitesse
+     markets : pays desservis
+     freq    : departs par jour sur un axe de trafic moyen           */
+  T.RAIL_OPERATORS = [
+    { id: 'inoui', name: 'TGV INOUI', company: 'SNCF Voyageurs', markets: ['FR'], intl: ['BE', 'CH', 'DE', 'ES', 'IT', 'LU'], hsr: true, base: 12, perKm: 0.135, freq: 11, classes: ['2de', '1re'], url: 'https://www.sncf-connect.com', flex: true },
+    { id: 'ouigo', name: 'OUIGO', company: 'SNCF Voyageurs', markets: ['FR'], intl: ['ES'], hsr: true, base: 5, perKm: 0.058, freq: 5, classes: ['unique'], url: 'https://www.ouigo.com', lowcost: true },
+    { id: 'intercites', name: 'Intercites / TER', company: 'SNCF Voyageurs', markets: ['FR'], intl: [], hsr: false, base: 4, perKm: 0.105, freq: 8, classes: ['2de', '1re'], url: 'https://www.sncf-connect.com' },
+    { id: 'eurostar', name: 'Eurostar', company: 'Eurostar Group', markets: ['FR', 'GB', 'BE', 'NL', 'DE'], intl: ['FR', 'GB', 'BE', 'NL', 'DE'], hsr: true, base: 32, perKm: 0.145, freq: 7, classes: ['Standard', 'Plus'], url: 'https://www.eurostar.com', border: true, intlOnly: true },
+    { id: 'trenitalia', name: 'Frecciarossa', company: 'Trenitalia', markets: ['IT'], intl: ['FR'], hsr: true, base: 10, perKm: 0.118, freq: 10, classes: ['Standard', 'Business'], url: 'https://www.trenitalia.com' },
+    { id: 'italo', name: 'Italo', company: 'NTV Italo', markets: ['IT'], intl: [], hsr: true, base: 8, perKm: 0.098, freq: 8, classes: ['Smart', 'Prima'], url: 'https://www.italotreno.com' },
+    { id: 'renfe', name: 'AVE', company: 'Renfe', markets: ['ES'], intl: ['FR', 'PT'], hsr: true, base: 12, perKm: 0.112, freq: 9, classes: ['Basico', 'Confort'], url: 'https://www.renfe.com' },
+    { id: 'iryo', name: 'iryo', company: 'Iryo', markets: ['ES'], intl: [], hsr: true, base: 7, perKm: 0.072, freq: 5, classes: ['Inicial', 'Singular'], url: 'https://iryo.eu', lowcost: true },
+    { id: 'ice', name: 'ICE', company: 'Deutsche Bahn', markets: ['DE'], intl: ['FR', 'BE', 'NL', 'CH', 'AT', 'DK'], hsr: true, base: 12, perKm: 0.148, freq: 10, classes: ['2. Klasse', '1. Klasse'], url: 'https://www.bahn.de', flex: true },
+    { id: 'flixtrain', name: 'FlixTrain', company: 'Flix SE', markets: ['DE'], intl: [], hsr: false, base: 6, perKm: 0.048, freq: 3, classes: ['unique'], url: 'https://www.flixtrain.com', lowcost: true },
+    { id: 'railjet', name: 'Railjet', company: 'OBB', markets: ['AT'], intl: ['DE', 'CH', 'HU', 'CZ', 'IT'], hsr: true, base: 10, perKm: 0.102, freq: 7, classes: ['Economy', 'First'], url: 'https://www.oebb.at' },
+    { id: 'nightjet', name: 'Nightjet', company: 'OBB', markets: ['AT', 'DE', 'CH', 'IT', 'FR', 'NL', 'BE', 'HU', 'CZ'], intl: ['AT', 'DE', 'CH', 'IT', 'FR', 'NL', 'BE', 'HU', 'CZ'], hsr: false, base: 40, perKm: 0.062, freq: 1, classes: ['Couchette', 'Cabine'], url: 'https://www.nightjet.com', night: true, intlOnly: true },
+    { id: 'icnuit', name: 'Intercites de Nuit', company: 'SNCF Voyageurs', markets: ['FR'], intl: [], hsr: false, base: 29, perKm: 0.042, freq: 1, classes: ['Couchette', 'Cabine'], url: 'https://www.sncf-connect.com', night: true },
+    { id: 'sbb', name: 'InterCity', company: 'CFF / SBB', markets: ['CH'], intl: ['DE', 'IT', 'FR', 'AT'], hsr: false, base: 14, perKm: 0.215, freq: 12, classes: ['2e', '1re'], url: 'https://www.sbb.ch' },
+    { id: 'ns', name: 'Intercity', company: 'NS', markets: ['NL'], intl: ['BE', 'DE'], hsr: false, base: 7, perKm: 0.155, freq: 12, classes: ['2e', '1re'], url: 'https://www.ns.nl' },
+    { id: 'sncb', name: 'InterCity', company: 'SNCB', markets: ['BE'], intl: ['NL', 'LU', 'FR'], hsr: false, base: 6, perKm: 0.135, freq: 12, classes: ['2e', '1re'], url: 'https://www.belgiantrain.be' },
+    { id: 'lner', name: 'LNER / Avanti', company: 'National Rail', markets: ['GB'], intl: [], hsr: true, base: 15, perKm: 0.165, freq: 9, classes: ['Standard', 'First'], url: 'https://www.nationalrail.co.uk' },
+    { id: 'cp', name: 'Alfa Pendular', company: 'Comboios de Portugal', markets: ['PT'], intl: ['ES'], hsr: false, base: 8, perKm: 0.085, freq: 5, classes: ['Turistica', 'Conforto'], url: 'https://www.cp.pt' },
+    { id: 'pkp', name: 'PKP Intercity', company: 'PKP', markets: ['PL'], intl: ['DE', 'CZ', 'AT'], hsr: false, base: 6, perKm: 0.055, freq: 6, classes: ['2 klasa', '1 klasa'], url: 'https://www.intercity.pl' },
+    { id: 'cd', name: 'RegioJet / CD', company: 'Ceske drahy', markets: ['CZ', 'SK'], intl: ['AT', 'DE', 'PL', 'HU'], hsr: false, base: 5, perKm: 0.052, freq: 6, classes: ['Standard', 'Business'], url: 'https://www.cd.cz' },
+    { id: 'mav', name: 'MAV InterCity', company: 'MAV-Start', markets: ['HU'], intl: ['AT', 'RO'], hsr: false, base: 5, perKm: 0.05, freq: 5, classes: ['2e', '1re'], url: 'https://www.mavcsoport.hu' },
+    { id: 'sj', name: 'SJ Snabbtag', company: 'SJ', markets: ['SE'], intl: ['DK', 'NO'], hsr: true, base: 14, perKm: 0.115, freq: 6, classes: ['2 klass', '1 klass'], url: 'https://www.sj.se' },
+    { id: 'dsb', name: 'DSB InterCity', company: 'DSB', markets: ['DK'], intl: ['SE', 'DE'], hsr: false, base: 10, perKm: 0.12, freq: 8, classes: ['Standard', 'Plus'], url: 'https://www.dsb.dk' },
+    { id: 'vy', name: 'Vy', company: 'Vy', markets: ['NO'], intl: ['SE'], hsr: false, base: 12, perKm: 0.12, freq: 5, classes: ['Standard', 'Komfort'], url: 'https://www.vy.no' },
+    { id: 'vr', name: 'VR Pendolino', company: 'VR', markets: ['FI'], intl: [], hsr: false, base: 9, perKm: 0.09, freq: 6, classes: ['Eco', 'Extra'], url: 'https://www.vr.fi' },
+    { id: 'shinkansen', name: 'Shinkansen', company: 'JR', markets: ['JP'], intl: [], hsr: true, base: 20, perKm: 0.14, freq: 14, classes: ['Ordinaire', 'Green'], url: 'https://www.jreast.co.jp' },
+    { id: 'crh', name: 'CRH', company: 'China Railway', markets: ['CN'], intl: [], hsr: true, base: 6, perKm: 0.055, freq: 12, classes: ['2e', '1re'], url: 'https://www.12306.cn' },
+    { id: 'amtrak', name: 'Amtrak', company: 'Amtrak', markets: ['US', 'CA'], intl: ['CA', 'US'], hsr: false, base: 18, perKm: 0.11, freq: 5, classes: ['Coach', 'Business'], url: 'https://www.amtrak.com' },
+    { id: 'oncf', name: 'Al Boraq / ONCF', company: 'ONCF', markets: ['MA'], intl: [], hsr: true, base: 6, perKm: 0.055, freq: 8, classes: ['2e', '1re'], url: 'https://www.oncf.ma' }
+  ];
+
+  /* --- compagnies aeriennes -------------------------------------------------
+     type   : 'low' (low-cost) ou 'full' (compagnie classique)
+     base   : part fixe (EUR), perKm : part kilometrique (EUR/km)
+     range  : rayon d'action commercial (km)
+     hubs   : aeroports ou la compagnie a une base
+     markets: pays desservis en point a point                       */
+  T.AIRLINES = [
+    { id: 'af', name: 'Air France', code: 'AF', type: 'full', base: 52, perKm: 0.098, range: 14000, hubs: ['CDG', 'ORY'], markets: ['FR'], bag: 0, url: 'https://www.airfrance.fr' },
+    { id: 'klm', name: 'KLM', code: 'KL', type: 'full', base: 50, perKm: 0.096, range: 14000, hubs: ['AMS'], markets: ['NL'], bag: 0, url: 'https://www.klm.fr' },
+    { id: 'lh', name: 'Lufthansa', code: 'LH', type: 'full', base: 55, perKm: 0.102, range: 14000, hubs: ['FRA', 'MUC'], markets: ['DE'], bag: 0, url: 'https://www.lufthansa.com' },
+    { id: 'ba', name: 'British Airways', code: 'BA', type: 'full', base: 48, perKm: 0.099, range: 14000, hubs: ['LHR', 'LGW'], markets: ['GB'], bag: 0, url: 'https://www.britishairways.com' },
+    { id: 'ib', name: 'Iberia', code: 'IB', type: 'full', base: 45, perKm: 0.092, range: 12000, hubs: ['MAD'], markets: ['ES'], bag: 0, url: 'https://www.iberia.com' },
+    { id: 'ita', name: 'ITA Airways', code: 'AZ', type: 'full', base: 46, perKm: 0.094, range: 12000, hubs: ['FCO', 'LIN'], markets: ['IT'], bag: 0, url: 'https://www.ita-airways.com' },
+    { id: 'lx', name: 'SWISS', code: 'LX', type: 'full', base: 58, perKm: 0.108, range: 12000, hubs: ['ZRH', 'GVA'], markets: ['CH'], bag: 0, url: 'https://www.swiss.com' },
+    { id: 'os', name: 'Austrian Airlines', code: 'OS', type: 'full', base: 50, perKm: 0.1, range: 10000, hubs: ['VIE'], markets: ['AT'], bag: 0, url: 'https://www.austrian.com' },
+    { id: 'sn', name: 'Brussels Airlines', code: 'SN', type: 'full', base: 46, perKm: 0.098, range: 9000, hubs: ['BRU'], markets: ['BE'], bag: 0, url: 'https://www.brusselsairlines.com' },
+    { id: 'tp', name: 'TAP Air Portugal', code: 'TP', type: 'full', base: 42, perKm: 0.088, range: 11000, hubs: ['LIS', 'OPO'], markets: ['PT'], bag: 0, url: 'https://www.flytap.com' },
+    { id: 'sk', name: 'SAS', code: 'SK', type: 'full', base: 48, perKm: 0.098, range: 9500, hubs: ['CPH', 'ARN', 'OSL'], markets: ['DK', 'SE', 'NO'], bag: 0, url: 'https://www.flysas.com' },
+    { id: 'ei', name: 'Aer Lingus', code: 'EI', type: 'full', base: 38, perKm: 0.082, range: 8000, hubs: ['DUB'], markets: ['IE'], bag: 25, url: 'https://www.aerlingus.com' },
+    { id: 'lo', name: 'LOT', code: 'LO', type: 'full', base: 42, perKm: 0.09, range: 10000, hubs: ['WAW'], markets: ['PL'], bag: 0, url: 'https://www.lot.com' },
+    { id: 'tk', name: 'Turkish Airlines', code: 'TK', type: 'full', base: 44, perKm: 0.086, range: 13000, hubs: ['IST'], markets: ['TR'], bag: 0, url: 'https://www.turkishairlines.com' },
+    { id: 'ay', name: 'Finnair', code: 'AY', type: 'full', base: 50, perKm: 0.1, range: 11000, hubs: ['HEL'], markets: ['FI'], bag: 0, url: 'https://www.finnair.com' },
+    { id: 'at', name: 'Royal Air Maroc', code: 'AT', type: 'full', base: 40, perKm: 0.086, range: 10000, hubs: ['CMN', 'RAK'], markets: ['MA'], bag: 0, url: 'https://www.royalairmaroc.com' },
+    { id: 'ek', name: 'Emirates', code: 'EK', type: 'full', base: 60, perKm: 0.082, range: 15000, hubs: ['DXB'], markets: ['AE'], bag: 0, url: 'https://www.emirates.com' },
+    { id: 'ua', name: 'United Airlines', code: 'UA', type: 'full', base: 55, perKm: 0.085, range: 14000, hubs: ['EWR', 'SFO', 'LAX'], markets: ['US'], bag: 35, url: 'https://www.united.com' },
+    { id: 'dl', name: 'Delta Air Lines', code: 'DL', type: 'full', base: 55, perKm: 0.086, range: 14000, hubs: ['JFK', 'LAX', 'MIA'], markets: ['US'], bag: 35, url: 'https://www.delta.com' },
+    { id: 'ac', name: 'Air Canada', code: 'AC', type: 'full', base: 52, perKm: 0.088, range: 13000, hubs: ['YUL', 'YYZ'], markets: ['CA'], bag: 30, url: 'https://www.aircanada.com' },
+    { id: 'jl', name: 'Japan Airlines', code: 'JL', type: 'full', base: 58, perKm: 0.092, range: 13000, hubs: ['HND', 'NRT'], markets: ['JP'], bag: 0, url: 'https://www.jal.co.jp' },
+    { id: 'sq', name: 'Singapore Airlines', code: 'SQ', type: 'full', base: 58, perKm: 0.09, range: 15000, hubs: ['SIN'], markets: ['SG'], bag: 0, url: 'https://www.singaporeair.com' },
+    { id: 'qf', name: 'Qantas', code: 'QF', type: 'full', base: 60, perKm: 0.09, range: 16000, hubs: ['SYD'], markets: ['AU'], bag: 0, url: 'https://www.qantas.com' },
+    { id: 'fr', name: 'Ryanair', code: 'FR', type: 'low', base: 11, perKm: 0.034, range: 3600, hubs: ['STN', 'BGY', 'CRL', 'BVA', 'DUB'], markets: ['FR', 'GB', 'IE', 'IT', 'ES', 'PT', 'BE', 'DE', 'PL', 'MA', 'AT', 'HU', 'CZ', 'GR', 'RO', 'NL', 'SE', 'DK'], bag: 28, url: 'https://www.ryanair.com', lowAirport: true },
+    { id: 'u2', name: 'easyJet', code: 'U2', type: 'low', base: 19, perKm: 0.047, range: 3800, hubs: ['LGW', 'ORY', 'CDG', 'GVA', 'MXP', 'LIS'], markets: ['FR', 'GB', 'CH', 'IT', 'ES', 'PT', 'NL', 'DE', 'MA', 'GR', 'AT'], bag: 26, url: 'https://www.easyjet.com' },
+    { id: 'vy', name: 'Vueling', code: 'VY', type: 'low', base: 17, perKm: 0.044, range: 3500, hubs: ['BCN', 'ORY', 'MAD'], markets: ['ES', 'FR', 'IT', 'GB', 'PT', 'GR', 'MA'], bag: 24, url: 'https://www.vueling.com' },
+    { id: 'hv', name: 'Transavia', code: 'HV', type: 'low', base: 20, perKm: 0.046, range: 3500, hubs: ['ORY', 'AMS', 'NTE', 'LYS', 'MPL'], markets: ['FR', 'NL', 'ES', 'PT', 'IT', 'GR', 'MA', 'TN'], bag: 25, url: 'https://www.transavia.com' },
+    { id: 'w6', name: 'Wizz Air', code: 'W6', type: 'low', base: 10, perKm: 0.031, range: 4000, hubs: ['BUD', 'OTP', 'KRK', 'WAW'], markets: ['HU', 'RO', 'PL', 'CZ', 'IT', 'ES', 'GB', 'FR', 'DE', 'AT', 'GR', 'AE'], bag: 30, url: 'https://wizzair.com' },
+    { id: 'v7', name: 'Volotea', code: 'V7', type: 'low', base: 16, perKm: 0.043, range: 2800, hubs: ['NTE', 'BOD', 'LYS', 'VCE', 'MRS', 'TLS'], markets: ['FR', 'IT', 'ES', 'GR'], bag: 23, url: 'https://www.volotea.com' }
+  ];
+
+  /* --- hypotheses par defaut du modele -------------------------------------- */
+  T.DEFAULTS = {
+    fuel: 'essence',
+    consumption: 6.2,          /* L/100 km */
+    fuelPrice: 1.79,           /* EUR/L */
+    kwhPer100: 17.5,           /* kWh/100 km en electrique */
+    kwhPrice: 0.32,            /* EUR/kWh en charge rapide */
+    tolls: true,
+    tollRate: 0.092,           /* EUR/km sur reseau concede */
+    motorwayShare: 0.72,       /* part du trajet sur autoroute (longue distance) */
+    wearPerKm: 0.06,           /* usure et entretien, EUR/km */
+    includeWear: false,
+    occupants: 1,              /* personnes partageant les frais de voiture */
+    passengers: 1,
+    railClass: '2de',
+    railCard: 'aucune',
+    checkinMin: 90,            /* enregistrement + surete avant le vol */
+    disembarkMin: 30,          /* debarquement + bagages */
+    hold: false,               /* bagage en soute */
+    railTransferMin: 20,       /* acces a la gare */
+    useLive: true
+  };
+
+  /* facteurs d'emission, en grammes de CO2 equivalent */
+  T.CO2 = {
+    essence: 192, diesel: 171, hybride: 128, electrique: 62,   /* g/km par vehicule */
+    railHsr: 6, railRegional: 32,                              /* g/km par voyageur */
+    airShort: 156, airLong: 108                                /* g/km par voyageur */
+  };
+
+  T.RAIL_CARDS = {
+    'aucune': { label: 'Aucune', factor: 1 },
+    'avantage': { label: 'Carte Avantage (SNCF)', factor: 0.75 },
+    'liberte': { label: 'Carte Liberte (SNCF)', factor: 0.62 },
+    'jeune': { label: 'Carte Jeune / Senior', factor: 0.7 },
+    'bahncard': { label: 'BahnCard 25 (DB)', factor: 0.75 },
+    'demi': { label: 'Abonnement demi-tarif (CFF)', factor: 0.5 }
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* assets/engine.js */
+/* TravIA — moteur d'estimation des trajets.
+   Le module est deterministe : pour un meme itineraire, une meme date et les
+   memes hypotheses, il renvoie toujours les memes horaires et les memes prix.
+   Chaque resultat porte l'origine de la donnee (mesuree ou estimee). */
+(function (global) {
+  'use strict';
+
+  var T = global.TravIA || (global.TravIA = {});
+  var MIN = 60000;
+
+  /* ------------------------------------------------------------------ outils */
+
+  function haversine(a, b) {
+    var R = 6371;
+    var dLat = (b.lat - a.lat) * Math.PI / 180;
+    var dLon = (b.lon - a.lon) * Math.PI / 180;
+    var la1 = a.lat * Math.PI / 180, la2 = b.lat * Math.PI / 180;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  function hash(str) {
+    var h = 2166136261 >>> 0;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+
+  /* generateur pseudo-aleatoire deterministe (mulberry32) */
+  function rand(seedStr) {
+    var s = hash(seedStr);
+    s = (s + 0x6D2B79F5) >>> 0;
+    var t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function round(v, n) { var f = Math.pow(10, n || 0); return Math.round(v * f) / f; }
+
+  function normalize(s) {
+    return (s || '').toString().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  /* ------------------------------------------------- recherche de lieux ----- */
+
+  function searchPlaces(query, limit) {
+    var q = normalize(query);
+    if (!q) return [];
+    var out = [];
+    T.PLACES.forEach(function (p) {
+      var name = normalize(p.name), country = normalize(p.country);
+      var score = -1;
+      if (name === q) score = 0;
+      else if (name.indexOf(q) === 0) score = 1;
+      else if (name.indexOf(q) > -1) score = 2;
+      else if (country.indexOf(q) === 0) score = 4;
+      else if (p.air.some(function (a) { return a.iata.toLowerCase() === q; })) score = 1;
+      if (score >= 0) out.push({ place: p, score: score - p.weight * 0.1 });
+    });
+    out.sort(function (a, b) { return a.score - b.score; });
+    return out.slice(0, limit || 8).map(function (o) { return o.place; });
+  }
+
+  function placeById(id) {
+    for (var i = 0; i < T.PLACES.length; i++) if (T.PLACES[i].id === id) return T.PLACES[i];
+    return null;
+  }
+
+  /* ------------------------------------------- continuite terrestre --------- */
+
+  function landLink(a, b) {
+    if (a === b) return { same: true, car: null, rail: true };
+    for (var i = 0; i < T.LAND_LINKS.length; i++) {
+      var l = T.LAND_LINKS[i];
+      if ((l.a === a && l.b === b) || (l.a === b && l.b === a)) {
+        return { same: false, car: l.car, rail: l.rail };
+      }
+    }
+    return null;
+  }
+
+  /* ------------------------------------------- cheminement sur reseau -------
+     Une distance a vol d'oiseau sous-estime fortement les relations en
+     baionnette (Paris - Nice passe par la vallee du Rhone). On calcule donc le
+     plus court chemin dans un graphe reliant chaque ville a ses voisines et aux
+     grandes villes proches ; la longueur obtenue sert de plancher aux distances
+     routieres et ferroviaires. */
+
+  var NODES = null, ADJ = null, PATH_CACHE = {};
+
+  function linkAllowed(a, b) {
+    if (a.land === b.land) return true;
+    var l = landLink(a.land, b.land);
+    return !!(l && l.rail);
+  }
+
+  function buildNetwork() {
+    if (ADJ) return;
+    NODES = T.PLACES.slice();
+    ADJ = NODES.map(function () { return []; });
+    NODES.forEach(function (a, i) {
+      var ds = [];
+      NODES.forEach(function (b, j) {
+        if (i === j || !linkAllowed(a, b)) return;
+        ds.push({ j: j, d: haversine(a, b) });
+      });
+      ds.sort(function (x, y) { return x.d - y.d; });
+      var keep = ds.slice(0, 5);
+      ds.forEach(function (e) {
+        if (e.d <= 550 && NODES[e.j].weight >= 4 && keep.indexOf(e) < 0) keep.push(e);
+      });
+      keep.forEach(function (e) {
+        ADJ[i].push(e);
+        ADJ[e.j].push({ j: i, d: e.d });
+      });
+    });
+  }
+
+  /* voisins d'un point quelconque, utilises comme portes d'entree du graphe */
+  function gateways(place) {
+    buildNetwork();
+    var idx = NODES.indexOf(place);
+    if (idx > -1) return [{ j: idx, d: 0 }];
+    var ds = [];
+    NODES.forEach(function (b, j) {
+      if (linkAllowed(place, b)) ds.push({ j: j, d: haversine(place, b) });
+    });
+    ds.sort(function (x, y) { return x.d - y.d; });
+    return ds.slice(0, 3);
+  }
+
+  /* Plus court chemin, en kilometres, ou null si les deux points ne sont pas
+     relies par voie terrestre. */
+  function networkPathKm(from, to) {
+    var key = from.id + '>' + to.id;
+    if (PATH_CACHE[key] !== undefined) return PATH_CACHE[key];
+    buildNetwork();
+    var starts = gateways(from), ends = {};
+    gateways(to).forEach(function (g) { ends[g.j] = g.d; });
+    if (!starts.length || !Object.keys(ends).length) return (PATH_CACHE[key] = null);
+
+    var n = NODES.length;
+    var dist = new Array(n), seen = new Array(n);
+    for (var i = 0; i < n; i++) { dist[i] = Infinity; seen[i] = false; }
+    starts.forEach(function (g) { dist[g.j] = Math.min(dist[g.j], g.d); });
+
+    var best = Infinity;
+    for (var step = 0; step < n; step++) {
+      var u = -1, bd = Infinity;
+      for (var k = 0; k < n; k++) if (!seen[k] && dist[k] < bd) { bd = dist[k]; u = k; }
+      if (u < 0) break;
+      seen[u] = true;
+      if (ends[u] !== undefined) best = Math.min(best, dist[u] + ends[u]);
+      if (bd > best) break;
+      ADJ[u].forEach(function (e) {
+        var nd = dist[u] + e.d;
+        if (nd < dist[e.j]) dist[e.j] = nd;
+      });
+    }
+    var out = isFinite(best) ? best : null;
+    PATH_CACHE[key] = out;
+    return out;
+  }
+
+  /* -------------------------------------------------- facteurs tarifaires --- */
+
+  function leadFactor(depDate, now) {
+    var days = (depDate.getTime() - (now || new Date()).getTime()) / 86400000;
+    if (days < 0) return 1;
+    if (days < 1) return 2.15;
+    if (days < 3) return 1.85;
+    if (days < 7) return 1.55;
+    if (days < 14) return 1.28;
+    if (days < 30) return 1.08;
+    if (days < 60) return 0.92;
+    return 0.84;
+  }
+
+  function dowFactor(d) {
+    switch (d.getDay()) {
+      case 0: return 1.12;  /* dimanche */
+      case 5: return 1.14;  /* vendredi */
+      case 6: return 0.94;  /* samedi */
+      case 2: case 3: return 0.95;
+      default: return 1;
+    }
+  }
+
+  function seasonFactor(d) {
+    var m = d.getMonth(), day = d.getDate();
+    if (m === 6 || m === 7) return 1.18;
+    if (m === 11 && day >= 18) return 1.16;
+    if (m === 4 || m === 5 || m === 8) return 1.04;
+    if (m === 0 || m === 1 || m === 10) return 0.93;
+    return 1;
+  }
+
+  function hourFactor(hours) {
+    if (hours >= 6.5 && hours < 9) return 1.16;
+    if (hours >= 17 && hours < 20) return 1.15;
+    if (hours >= 10 && hours < 15) return 0.9;
+    if (hours < 6.5 || hours >= 21) return 0.82;
+    return 1;
+  }
+
+  function trafficWeight(a, b) {
+    return clamp((a.weight + b.weight) / 8, 0.35, 1.25);
+  }
+
+  /* ----------------------------------------------------------- voiture ------ */
+
+  function detourFactor(km) {
+    if (km < 40) return 1.38;
+    if (km < 150) return 1.26;
+    if (km < 500) return 1.19;
+    if (km < 1200) return 1.17;
+    return 1.15;
+  }
+
+  /* vitesse moyenne effective, calee sur les temps de parcours observes
+     (Paris - Lyon 465 km en 4 h 40, Paris - Marseille 775 km en 7 h 20) */
+  function roadSpeed(km) {
+    if (km < 25) return 34;
+    if (km < 80) return 62;
+    if (km < 200) return 82;
+    if (km < 500) return 101;
+    if (km < 1000) return 105;
+    return 107;
+  }
+
+  /* measured : mesure routiere reelle {distanceKm, durationMin} fournie par OSRM.
+     Elle remplace le modele de distance et de temps de conduite ; les couts,
+     les pauses et les emissions restent calcules a partir de cette mesure. */
+  function estimateCar(from, to, dep, opts, measured) {
+    var link = landLink(from.land, to.land);
+    if (!link && !measured) {
+      return { available: false, reason: 'Aucune continuite routiere entre ' + from.country + ' et ' + to.country + '.' };
+    }
+    var geo = haversine(from, to);
+    var distance, driveMin, peak = false;
+    var h = dep.getHours() + dep.getMinutes() / 60;
+
+    if (measured && measured.distanceKm > 0) {
+      distance = measured.distanceKm;
+      driveMin = measured.durationMin;
+    } else {
+      distance = geo * detourFactor(geo);
+      var pathKm = networkPathKm(from, to);
+      if (pathKm) distance = Math.max(distance, pathKm * 1.09);
+      driveMin = distance / roadSpeed(distance) * 60;
+      /* trafic aux heures de pointe sur les trajets courts et moyens */
+      peak = ((h >= 7 && h < 9.5) || (h >= 16.5 && h < 19)) && dep.getDay() > 0 && dep.getDay() < 6;
+      if (peak) driveMin *= distance < 150 ? 1.22 : 1.07;
+    }
+
+    var breaksMin = driveMin > 150 ? Math.floor(driveMin / 120) * 15 : 0;
+    var ferry = link.car;
+    var totalMin = driveMin + breaksMin + (ferry ? ferry.extraMin : 0);
+
+    var energyCost, energyLabel;
+    if (opts.fuel === 'electrique') {
+      energyCost = distance / 100 * opts.kwhPer100 * opts.kwhPrice;
+      energyLabel = round(distance / 100 * opts.kwhPer100, 0) + ' kWh';
+    } else {
+      energyCost = distance / 100 * opts.consumption * opts.fuelPrice;
+      energyLabel = round(distance / 100 * opts.consumption, 1) + ' L';
+    }
+    var tollFree = ['GB', 'BE', 'NL', 'DE', 'DK', 'SE', 'FI', 'LU', 'IE'];
+    var tollShare = (tollFree.indexOf(from.cc) > -1 && tollFree.indexOf(to.cc) > -1) ? 0.12 : opts.motorwayShare;
+    var tollCost = opts.tolls && distance > 40 ? distance * tollShare * opts.tollRate : 0;
+    var wearCost = opts.includeWear ? distance * opts.wearPerKm : 0;
+    var ferryCost = ferry ? ferry.extraCost : 0;
+    var total = energyCost + tollCost + wearCost + ferryCost;
+    var occupants = Math.max(1, opts.occupants || 1);
+
+    var co2 = distance * (T.CO2[opts.fuel] || T.CO2.essence) / 1000; /* kg par vehicule */
+
+    return {
+      available: true,
+      mode: 'car',
+      source: measured ? 'osrm' : 'estime',
+      distanceKm: round(distance, 0),
+      durationMin: Math.round(totalMin),
+      driveMin: Math.round(driveMin),
+      breaksMin: breaksMin,
+      depart: new Date(dep.getTime()),
+      arrivee: new Date(dep.getTime() + Math.round(totalMin) * MIN),
+      costTotal: round(total, 2),
+      costPerPerson: round(total / occupants, 2),
+      occupants: occupants,
+      co2Total: round(co2, 1),
+      co2PerPerson: round(co2 / occupants, 1),
+      breakdown: [
+        { label: opts.fuel === 'electrique' ? 'Recharge (' + energyLabel + ')' : 'Carburant (' + energyLabel + ')', value: round(energyCost, 2) },
+        { label: 'Peages', value: round(tollCost, 2) },
+        { label: 'Usure et entretien', value: round(wearCost, 2) },
+        { label: ferry ? ferry.label : 'Traversee', value: round(ferryCost, 2) }
+      ].filter(function (b) { return b.value > 0; }),
+      peak: peak,
+      ferry: ferry ? ferry.label : null
+    };
+  }
+
+  /* ------------------------------------------------------------- train ------ */
+
+  function railEligible(op, from, to) {
+    var a = from.cc, b = to.cc;
+    var mA = op.markets.indexOf(a) > -1, mB = op.markets.indexOf(b) > -1;
+    /* certains operateurs n'exploitent que des relations internationales */
+    if (op.intlOnly && a === b) return false;
+    if (a === b) return mA && mB ? 'home' : false;
+    var iA = (op.intl || []).indexOf(a) > -1, iB = (op.intl || []).indexOf(b) > -1;
+    if ((mA && (mB || iB)) || (mB && (mA || iA))) return 'home';
+    /* relation entre deux pays desservis sans passer par le marche d'origine :
+       possible, mais avec correspondance et une offre plus rare */
+    if (iA && iB) return 'transit';
+    return false;
+  }
+
+  /* vitesse commerciale moyenne des relations interieures a grande vitesse */
+  var DOMESTIC_HSR = { FR: 228, ES: 225, IT: 210, JP: 230, CN: 245, MA: 195, DE: 150, GB: 145, CH: 110, SE: 165, PL: 140 };
+
+  /* vitesse moyenne des grands corridors transfrontaliers, calee sur les
+     horaires publies (Paris - Bruxelles 1 h 22, Paris - Milan 6 h 50, etc.) */
+  var CORRIDOR = {
+    'BE|FR': 215, 'BE|NL': 175, 'FR|GB': 170, 'BE|GB': 180, 'GB|NL': 160, 'FR|NL': 145,
+    'DE|FR': 140, 'CH|FR': 148, 'ES|FR': 148, 'FR|IT': 105, 'CH|IT': 115, 'AT|IT': 110,
+    'DE|IT': 110, 'AT|DE': 140, 'CH|DE': 135, 'AT|CH': 115, 'DE|NL': 140, 'DE|PL': 115,
+    'AT|HU': 130, 'AT|CZ': 110, 'CZ|DE': 110, 'CZ|PL': 100, 'ES|PT': 95, 'DE|DK': 125,
+    'DK|SE': 145, 'NO|SE': 105, 'FR|LU': 155, 'BE|LU': 105, 'HU|RO': 85, 'CA|US': 95
+  };
+
+  /* Coefficient lie a la geometrie du reseau : plein regime au depart du noeud
+     central ou le long d'un meme axe, penalite sur les transversales. */
+  function axisFactor(from, to) {
+    var hub = T.RAIL_HUBS[from.cc];
+    if (!hub) return 1;
+    if (from.id === hub || to.id === hub) return 1;
+    var a = T.RAIL_AXES[from.id], b = T.RAIL_AXES[to.id];
+    if (a && b && a === b) return 0.85;
+    return 0.62;
+  }
+
+  function railSpeed(op, from, to, km) {
+    if (op.night) return 78;
+    if (from.cc === to.cc) {
+      var classic = km > 400 ? 105 : 92;
+      if (!op.hsr) return classic;
+      var vHigh = DOMESTIC_HSR[from.cc] || 160;
+      if (from.rail.hsr && to.rail.hsr) return vHigh * axisFactor(from, to);
+      if (from.rail.hsr || to.rail.hsr) {
+        /* une partie du parcours seulement est apte a la grande vitesse */
+        var share = Math.min(0.5, km / 700);
+        return vHigh * share + classic * (1 - share);
+      }
+      return classic;
+    }
+    var pair = [from.cc, to.cc].sort().join('|');
+    var c = CORRIDOR[pair];
+    if (c) return op.hsr ? c : c * 0.85;
+    return op.hsr ? 125 : 92;
+  }
+
+  function railTransfers(op, from, to, km) {
+    if (from.cc === to.cc) return km > 900 && !op.hsr ? 1 : 0;
+    if (op.border) return 0;
+    var direct = (op.markets.indexOf(from.cc) > -1 && op.markets.indexOf(to.cc) > -1);
+    if (direct) return 0;
+    if (km < 1000) return 1;
+    if (km < 1900) return 2;
+    return 3;
+  }
+
+  /* grille de departs d'un operateur, en heures decimales */
+  function departureGrid(op, seedKey, weight) {
+    var count, start, end;
+    if (op.night) { count = 1; start = 20.75; end = 22.25; }
+    else {
+      count = clamp(Math.round(op.freq * weight), 2, 14);
+      start = op.hsr ? 6.2 : 5.6;
+      end = 21.4;
+    }
+    var grid = [];
+    var span = end - start;
+    for (var i = 0; i < count; i++) {
+      var jitter = (rand(seedKey + '|g' + i) - 0.5) * (span / count) * 0.75;
+      var t = start + (count === 1 ? span / 2 : span * i / (count - 1)) + jitter;
+      grid.push(clamp(t, 0.2, 23.6));
+    }
+    return grid.sort(function (a, b) { return a - b; });
+  }
+
+  /* Date correspondant a une heure decimale, le jour du depart ou le lendemain. */
+  function slotDate(dep, h, nextDay) {
+    return new Date(dep.getFullYear(), dep.getMonth(), dep.getDate() + (nextDay ? 1 : 0),
+                    0, Math.round(h * 60));
+  }
+
+  function priceRound(p) {
+    if (p < 40) return round(Math.round(p * 2) / 2, 2);
+    if (p < 200) return Math.round(p);
+    return Math.round(p / 5) * 5;
+  }
+
+  function railOffers(from, to, dep, opts, now) {
+    if (!from.rail || !to.rail) {
+      var who = !from.rail ? from.name : to.name;
+      return { available: false, reason: 'Pas de desserte ferroviaire identifiee pour ' + who + '.' };
+    }
+    var link = landLink(from.land, to.land);
+    if (!link || (!link.same && !link.rail)) {
+      return { available: false, reason: 'Aucune liaison ferroviaire continue entre ' + from.country + ' et ' + to.country + '.' };
+    }
+    var geo = haversine(from, to);
+    if (geo < 15) return { available: false, reason: 'Distance trop courte pour un trajet ferroviaire interurbain.' };
+    var km = geo * (geo < 300 ? 1.22 : 1.12);
+    var pathKm = networkPathKm(from, to);
+    if (pathKm) km = Math.max(km, pathKm * 1.05);
+    var weight = trafficWeight(from, to);
+    var classFactor = opts.railClass === '1re' ? 1.52 : 1;
+    var card = T.RAIL_CARDS[opts.railCard] || T.RAIL_CARDS.aucune;
+    var lead = leadFactor(dep, now), dow = dowFactor(dep), season = seasonFactor(dep);
+    var offers = [];
+
+    T.RAIL_OPERATORS.forEach(function (op) {
+      var kind = railEligible(op, from, to);
+      if (!kind) return;
+      var transit = kind === 'transit';
+      if (op.night && km < 650) return;
+      if (!op.hsr && km > 600 && !op.night) return;   /* pas de service classique de bout en bout */
+      if (op.lowcost && km < 120) return;
+
+      var speed = railSpeed(op, from, to, km);
+      var transfers = railTransfers(op, from, to, km) + (transit ? 1 : 0);
+      var stops = clamp(Math.round(km / (op.hsr ? 280 : 110)), 0, 12);
+      /* 8 minutes forfaitaires : acceleration, approche et manoeuvres en gare */
+      var rideMin = km / speed * 60 + 8 + stops * (op.hsr ? 3 : 2) + transfers * (km > 900 ? 55 : 40);
+      if (op.night) rideMin = Math.max(rideMin, 470);
+
+      var seedKey = from.id + '>' + to.id + '|' + op.id + '|' + dep.toDateString();
+      var grid = departureGrid({ freq: op.freq * (transit ? 0.3 : 1), hsr: op.hsr, night: op.night },
+                               seedKey, weight);
+      var laterToday = grid.some(function (g) { return slotDate(dep, g, false) >= dep; });
+
+      var accessMin = from.rail.accessMin != null ? from.rail.accessMin : opts.railTransferMin;
+      var egressMin = to.rail.accessMin != null ? to.rail.accessMin : opts.railTransferMin;
+
+      grid.forEach(function (h, i) {
+        var d = slotDate(dep, h, false);
+        if (d < dep) {
+          if (op.night || laterToday) return;  /* un depart plus tardif existe le jour meme */
+          d = slotDate(dep, h, true);
+        }
+        var jitter = 0.86 + rand(seedKey + '|p' + i) * 0.42;
+        var yieldFactor = op.lowcost ? 0.95 : 1;
+        var price = (op.base + op.perKm * km) * classFactor * lead * dow * season *
+                    hourFactor(h) * jitter * yieldFactor * card.factor;
+        if (op.night) price = Math.max(price, 49);
+        price = Math.max(price, op.lowcost ? 10 : 12);
+        var duration = Math.round(rideMin * (0.97 + rand(seedKey + '|d' + i) * 0.09));
+        offers.push({
+          mode: 'train',
+          operator: op.name,
+          company: op.company,
+          url: op.url,
+          klass: opts.railClass === '1re' ? (op.classes[1] || op.classes[0]) : op.classes[0],
+          depart: d,
+          arrivee: new Date(d.getTime() + duration * MIN),
+          durationMin: duration,
+          transfers: transfers,
+          night: !!op.night,
+          pricePerPerson: priceRound(price),
+          price: priceRound(price) * Math.max(1, opts.passengers),
+          distanceKm: round(km, 0),
+          co2PerPerson: round(km * (op.hsr ? T.CO2.railHsr : T.CO2.railRegional) / 1000, 1),
+          fromLabel: from.rail.station,
+          toLabel: to.rail.station,
+          accessMin: accessMin,
+          egressMin: egressMin,
+          doorToDoorMin: duration + accessMin + egressMin
+        });
+      });
+    });
+
+    if (!offers.length) {
+      return { available: false, reason: 'Aucun operateur ferroviaire identifie sur cette relation.' };
+    }
+    offers.sort(function (a, b) { return a.depart - b.depart; });
+    return { available: true, mode: 'train', source: 'estime', distanceKm: round(km, 0), offers: offers.slice(0, 24) };
+  }
+
+  /* ------------------------------------------------------------- avion ------ */
+
+  function pickAirport(place, airline) {
+    if (!place.air.length) return null;
+    var hub = place.air.filter(function (a) { return airline && airline.hubs.indexOf(a.iata) > -1; })[0];
+    if (hub) return hub;
+    if (airline && airline.lowAirport) {
+      var low = place.air.filter(function (a) { return a.kind === 'lowcost'; })[0];
+      if (low) return low;
+    }
+    return place.air.slice().sort(function (a, b) { return a.transferMin - b.transferMin; })[0];
+  }
+
+  var BASE_CC = null;
+  function baseCountries(al) {
+    if (!BASE_CC) {
+      BASE_CC = {};
+      T.PLACES.forEach(function (p) {
+        p.air.forEach(function (a) { BASE_CC[a.iata] = p.cc; });
+      });
+    }
+    var out = {};
+    al.hubs.forEach(function (h) { if (BASE_CC[h]) out[BASE_CC[h]] = true; });
+    return out;
+  }
+
+  function airlineServes(al, from, to, km) {
+    if (km > al.range) return null;
+    var hubA = from.air.some(function (a) { return al.hubs.indexOf(a.iata) > -1; });
+    var hubB = to.air.some(function (a) { return al.hubs.indexOf(a.iata) > -1; });
+    var mA = al.markets.indexOf(from.cc) > -1, mB = al.markets.indexOf(to.cc) > -1;
+    if (al.type === 'low') {
+      /* une low-cost ne dessert que les pays de son reseau */
+      if (!(mA && mB)) return null;
+      if (hubA || hubB) return { stops: 0 };
+      if (from.cc === to.cc) return null;   /* interieur sans base sur place */
+      /* point a point sans base aux deux extremites : seulement si la compagnie
+         est implantee dans l'un des deux pays et si la relation porte du trafic */
+      var bases = baseCountries(al);
+      if (!(bases[from.cc] || bases[to.cc])) return null;
+      return from.weight + to.weight >= 6 ? { stops: 0 } : null;
+    }
+    if (hubA || hubB) return { stops: 0 };
+    if (mA || mB) return { stops: 1 };
+    return null;
+  }
+
+  function flightOffers(from, to, dep, opts, now) {
+    if (!from.air.length || !to.air.length) {
+      var who = !from.air.length ? from.name : to.name;
+      return { available: false, reason: 'Pas d aeroport commercial identifie pour ' + who + '.' };
+    }
+    var geo = haversine(from, to);
+    if (geo < 200) return { available: false, reason: 'Distance trop courte pour une liaison aerienne (moins de 200 km).' };
+    var km = geo * 1.04 + 55;
+    var weight = trafficWeight(from, to);
+    var lead = leadFactor(dep, now), dow = dowFactor(dep), season = seasonFactor(dep);
+    var offers = [];
+
+    T.AIRLINES.forEach(function (al) {
+      var serve = airlineServes(al, from, to, km);
+      if (!serve) return;
+      var apA = pickAirport(from, al), apB = pickAirport(to, al);
+      if (!apA || !apB) return;
+
+      var flightKm = km * (serve.stops ? 1.18 : 1);
+      var blockMin = 28 + flightKm / (flightKm > 2500 ? 830 : 720) * 60;
+      var layover = serve.stops ? 80 + Math.round(rand(al.id + from.id + to.id) * 45) : 0;
+      var airMin = blockMin + layover + (serve.stops ? 22 : 0);
+
+      var seedKey = from.id + '>' + to.id + '|' + al.id + '|' + dep.toDateString();
+      var count = clamp(Math.round((al.type === 'low' ? 3 : 5) * weight - serve.stops), 1, 7);
+      var grid = departureGrid({ freq: count, hsr: true }, seedKey, 1);
+      var laterToday = grid.some(function (g) { return slotDate(dep, g, false) >= dep; });
+
+      grid.forEach(function (h, i) {
+        var d = slotDate(dep, h, false);
+        if (d < dep) {
+          if (laterToday) return;
+          d = slotDate(dep, h, true);
+        }
+        var jitter = 0.8 + rand(seedKey + '|p' + i) * 0.55;
+        var price = (al.base + al.perKm * flightKm) * lead * dow * season * hourFactor(h) * jitter;
+        if (serve.stops) price *= 0.9;
+        var bag = opts.hold ? (al.bag || 0) : 0;
+        price = Math.max(price, al.type === 'low' ? 14 : 39) + bag;
+        var duration = Math.round(airMin * (0.97 + rand(seedKey + '|d' + i) * 0.08));
+
+        var accessMin = apA.transferMin + opts.checkinMin;
+        var egressMin = opts.disembarkMin + apB.transferMin;
+        offers.push({
+          mode: 'plane',
+          operator: al.name,
+          company: al.name,
+          code: al.code + ' ' + (1000 + Math.floor(rand(seedKey + '|n' + i) * 8000)),
+          url: al.url,
+          depart: d,
+          arrivee: new Date(d.getTime() + duration * MIN),
+          durationMin: duration,
+          doorToDoorMin: duration + accessMin + egressMin,
+          transfers: serve.stops,
+          pricePerPerson: priceRound(price),
+          price: priceRound(price) * Math.max(1, opts.passengers),
+          bagIncluded: !opts.hold || al.bag === 0,
+          bagFee: bag,
+          distanceKm: round(flightKm, 0),
+          co2PerPerson: round(flightKm * (flightKm > 1500 ? T.CO2.airLong : T.CO2.airShort) / 1000, 1),
+          fromLabel: apA.iata + ' ' + apA.name,
+          toLabel: apB.iata + ' ' + apB.name,
+          accessMin: accessMin,
+          egressMin: egressMin,
+          klass: al.type === 'low' ? 'Economique (sans bagage)' : 'Economique'
+        });
+      });
+    });
+
+    if (!offers.length) {
+      /* relation non couverte par les compagnies du referentiel : estimation
+         generique avec correspondance, signalee comme telle */
+      var apA2 = pickAirport(from, null), apB2 = pickAirport(to, null);
+      var blockMin2 = 28 + km * 1.2 / 780 * 60 + 95;
+      var d2 = new Date(dep.getFullYear(), dep.getMonth(), dep.getDate(), 9, 30);
+      if (d2 < dep) d2 = new Date(d2.getTime() + 86400000);
+      var price2 = priceRound((60 + km * 1.2 * 0.092) * lead * dow * season);
+      offers.push({
+        mode: 'plane', operator: 'Vol avec correspondance', company: 'Compagnies en partage de code',
+        code: '--', url: 'https://www.google.com/travel/flights',
+        depart: d2, arrivee: new Date(d2.getTime() + Math.round(blockMin2) * MIN),
+        durationMin: Math.round(blockMin2), doorToDoorMin: Math.round(blockMin2) + apA2.transferMin + opts.checkinMin + opts.disembarkMin + apB2.transferMin,
+        transfers: 1, pricePerPerson: price2, price: price2 * Math.max(1, opts.passengers),
+        bagIncluded: true, bagFee: 0, distanceKm: round(km * 1.2, 0),
+        co2PerPerson: round(km * 1.2 * T.CO2.airLong / 1000, 1),
+        fromLabel: apA2.iata + ' ' + apA2.name, toLabel: apB2.iata + ' ' + apB2.name,
+        accessMin: apA2.transferMin + opts.checkinMin, egressMin: opts.disembarkMin + apB2.transferMin,
+        klass: 'Economique', generic: true
+      });
+    }
+    offers.sort(function (a, b) { return a.depart - b.depart; });
+    return { available: true, mode: 'plane', source: 'estime', distanceKm: round(km, 0), offers: offers.slice(0, 24) };
+  }
+
+  /* --------------------------------------------- synthese d'un segment ------ */
+
+  function bestOf(offers, key) {
+    return offers.slice().sort(function (a, b) { return a[key] - b[key]; })[0];
+  }
+
+  function summarizeOffers(res, opts, doorToDoor) {
+    if (!res.available) return res;
+    var offers = res.offers;
+    var cheapest = bestOf(offers, 'pricePerPerson');
+    var fastest = bestOf(offers, doorToDoor ? 'doorToDoorMin' : 'durationMin');
+    var prices = offers.map(function (o) { return o.pricePerPerson; });
+    res.priceMin = Math.min.apply(null, prices);
+    res.priceMax = Math.max.apply(null, prices);
+    res.cheapest = cheapest;
+    res.fastest = fastest;
+    res.co2PerPerson = cheapest.co2PerPerson;
+    return res;
+  }
+
+  /* Calcule les trois modes pour un segment donne. */
+  function computeLeg(from, to, dep, opts, now, measured) {
+    var car = estimateCar(from, to, dep, opts, measured);
+    var train = railOffers(from, to, dep, opts, now);
+    var plane = flightOffers(from, to, dep, opts, now);
+    if (train.available) summarizeOffers(train, opts, true);
+    if (plane.available) summarizeOffers(plane, opts, true);
+    return {
+      from: from, to: to, depart: dep,
+      geoKm: round(haversine(from, to), 0),
+      car: car, train: train, plane: plane
+    };
+  }
+
+  /* Duree porte a porte retenue pour comparer les modes. */
+  function legDuration(leg, mode, opts) {
+    if (mode === 'car') return leg.car.available ? leg.car.durationMin : null;
+    if (mode === 'train') return leg.train.available ? leg.train.fastest.doorToDoorMin : null;
+    if (!leg.plane.available) return null;
+    return leg.plane.fastest.doorToDoorMin;
+  }
+
+  function legPrice(leg, mode, opts) {
+    if (mode === 'car') return leg.car.available ? leg.car.costPerPerson : null;
+    if (mode === 'train') return leg.train.available ? leg.train.priceMin : null;
+    return leg.plane.available ? leg.plane.priceMin : null;
+  }
+
+  function legCo2(leg, mode) {
+    if (mode === 'car') return leg.car.available ? leg.car.co2PerPerson : null;
+    if (mode === 'train') return leg.train.available ? leg.train.co2PerPerson : null;
+    return leg.plane.available ? leg.plane.co2PerPerson : null;
+  }
+
+  /* Construit un lieu a partir d'un point geocode : rattachement a la gare et
+     a l'aeroport les plus proches du referentiel, avec le temps d'acces routier. */
+  function buildCustomPlace(name, lat, lon, meta) {
+    var pt = { lat: lat, lon: lon };
+    var nearest = null, nearestD = Infinity, railHost = null, railD = Infinity, airHost = null, airD = Infinity;
+    T.PLACES.forEach(function (p) {
+      var d = haversine(pt, p);
+      if (d < nearestD) { nearestD = d; nearest = p; }
+      if (p.rail && d < railD) { railD = d; railHost = p; }
+      if (p.air.length && d < airD) { airD = d; airHost = p; }
+    });
+    if (!nearest) return null;
+
+    function accessMinutes(km) {
+      var road = km * detourFactor(km);
+      return Math.round(road / roadSpeed(road) * 60) + 10;
+    }
+    var place = {
+      id: 'pt:' + round(lat, 4) + ',' + round(lon, 4),
+      name: name,
+      country: (meta && meta.country) || nearest.country,
+      cc: (meta && meta.cc) || nearest.cc,
+      lat: lat, lon: lon,
+      weight: nearestD < 12 ? nearest.weight : 2,
+      land: nearest.land,
+      custom: true,
+      nearest: nearest.name,
+      rail: null,
+      air: []
+    };
+    if (nearestD < 12) {
+      place.rail = nearest.rail;
+      place.air = nearest.air;
+      return place;
+    }
+    if (railHost && railD < 170) {
+      place.rail = {
+        station: railHost.rail.station,
+        hsr: railHost.rail.hsr,
+        accessMin: accessMinutes(railD),
+        host: railHost.name
+      };
+    }
+    if (airHost && airD < 220) {
+      var extra = accessMinutes(airD);
+      place.air = airHost.air.map(function (a) {
+        return { iata: a.iata, name: a.name + ' (via ' + airHost.name + ')', transferMin: a.transferMin + extra, kind: a.kind };
+      });
+    }
+    return place;
+  }
+
+  T.engine = {
+    buildCustomPlace: buildCustomPlace,
+    haversine: haversine,
+    rand: rand,
+    hash: hash,
+    normalize: normalize,
+    searchPlaces: searchPlaces,
+    placeById: placeById,
+    estimateCar: estimateCar,
+    railOffers: railOffers,
+    flightOffers: flightOffers,
+    computeLeg: computeLeg,
+    legDuration: legDuration,
+    legPrice: legPrice,
+    legCo2: legCo2,
+    leadFactor: leadFactor,
+    round: round,
+    priceRound: priceRound
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* assets/providers.js */
+/* TravIA — acces aux services ouverts.
+   Deux services sont interroges depuis le navigateur, sans cle d'API :
+     - Nominatim (OpenStreetMap) pour geocoder un lieu absent du referentiel ;
+     - OSRM pour mesurer un itineraire routier reel, points de passage compris.
+   Toute erreur ou indisponibilite bascule silencieusement sur le modele
+   interne ; l'origine de la donnee est ensuite affichee dans les resultats. */
+(function (global) {
+  'use strict';
+
+  var T = global.TravIA || (global.TravIA = {});
+
+  var NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+  var OSRM = 'https://router.project-osrm.org/route/v1/driving/';
+
+  function withTimeout(url, ms) {
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms || 7000);
+    return fetch(url, {
+      signal: ctrl ? ctrl.signal : undefined,
+      headers: { 'Accept': 'application/json' }
+    }).then(function (r) {
+      clearTimeout(timer);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }, function (e) {
+      clearTimeout(timer);
+      throw e;
+    });
+  }
+
+  /* Geocodage d'une chaine libre. Renvoie [] si le service est injoignable. */
+  function geocode(query) {
+    var url = NOMINATIM + '?q=' + encodeURIComponent(query) +
+      '&format=jsonv2&limit=5&addressdetails=1&accept-language=fr';
+    return withTimeout(url, 7000).then(function (rows) {
+      return (rows || []).map(function (r) {
+        var addr = r.address || {};
+        var label = r.display_name.split(',').slice(0, 2).join(',').trim();
+        return {
+          label: label,
+          detail: r.display_name,
+          lat: parseFloat(r.lat),
+          lon: parseFloat(r.lon),
+          country: addr.country || '',
+          cc: (addr.country_code || '').toUpperCase()
+        };
+      });
+    }).catch(function () { return []; });
+  }
+
+  /* Itineraire routier reel. points = [{lat, lon}, ...] dans l'ordre du trajet. */
+  function route(points) {
+    if (!points || points.length < 2) return Promise.resolve(null);
+    var coords = points.map(function (p) { return p.lon.toFixed(5) + ',' + p.lat.toFixed(5); }).join(';');
+    var url = OSRM + coords + '?overview=false&alternatives=false&steps=false';
+    return withTimeout(url, 8000).then(function (data) {
+      if (!data || data.code !== 'Ok' || !data.routes || !data.routes.length) return null;
+      var r = data.routes[0];
+      return {
+        distanceKm: r.distance / 1000,
+        durationMin: r.duration / 60,
+        legs: (r.legs || []).map(function (l) {
+          return { distanceKm: l.distance / 1000, durationMin: l.duration / 60 };
+        })
+      };
+    }).catch(function () { return null; });
+  }
+
+  T.providers = { geocode: geocode, route: route, available: typeof fetch === 'function' };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* assets/app.js */
+/* TravIA — interface et orchestration.
+   Enchaine : saisie des points -> resolution des lieux -> mesure routiere
+   optionnelle -> calcul des trois modes -> rendu comparatif. */
+(function (global) {
+  'use strict';
+
+  var T = global.TravIA;
+  var E = T.engine;
+  var doc = global.document;
+
+  /* ------------------------------------------------------------- utilitaires */
+
+  function $(sel, root) { return (root || doc).querySelector(sel); }
+  function el(tag, cls, text) {
+    var n = doc.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function shortHost(url) {
+    return String(url).replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  }
+
+  function fmtDur(min) {
+    if (min == null) return '—';
+    var m = Math.round(min);
+    var h = Math.floor(m / 60);
+    return h ? h + ' h ' + pad(m % 60) : m + ' min';
+  }
+  function fmtPrice(v) {
+    if (v == null) return '—';
+    return v.toLocaleString('fr-FR', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
+  }
+  function fmtKm(v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' km'; }
+  function fmtCo2(v) { return v == null ? '—' : (v < 10 ? v.toFixed(1) : Math.round(v).toString()).replace('.', ',') + ' kg'; }
+  function fmtClock(d, ref) {
+    var s = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    if (ref) {
+      var days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) -
+        new Date(ref.getFullYear(), ref.getMonth(), ref.getDate())) / 86400000);
+      if (days > 0) s += '<span class="time__day">+' + days + '</span>';
+    }
+    return s;
+  }
+  function fmtDate(d) {
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' });
+  }
+
+  var MODES = {
+    car: { key: 'car', label: 'Voiture', short: 'VO' },
+    train: { key: 'train', label: 'Train', short: 'TR' },
+    plane: { key: 'plane', label: 'Avion', short: 'AV' }
+  };
+  var MODE_ORDER = ['car', 'train', 'plane'];
+
+  /* ------------------------------------------------------------------- etat */
+
+  var state = {
+    stops: [],
+    opts: Object.assign({}, T.DEFAULTS),
+    modes: { car: true, train: true, plane: true },
+    resolved: null,
+    route: null,
+    routeStatus: 'none',
+    picks: [],
+    expanded: {},
+    busy: false
+  };
+
+  var uid = 0;
+  function newStop(query) {
+    return { uid: ++uid, query: query || '', place: null, hold: 0 };
+  }
+
+  /* ------------------------------------------------- saisie des points ----- */
+
+  var stopsBox = $('#stops');
+
+  function renderStops() {
+    stopsBox.innerHTML = '';
+    state.stops.forEach(function (stop, i) {
+      var isFirst = i === 0, isLast = i === state.stops.length - 1;
+      var row = el('div', 'stop' + (!isFirst && !isLast ? ' stop--via' : ''));
+
+      var key = el('span', 'stop__key', isFirst ? 'D' : isLast ? 'A' : String(i));
+      row.appendChild(key);
+
+      var field = el('div', 'stop__field');
+      var input = doc.createElement('input');
+      input.type = 'text';
+      input.value = stop.query;
+      input.placeholder = isFirst ? 'Ville, gare ou adresse de depart'
+        : isLast ? 'Destination' : 'Point de passage';
+      input.setAttribute('aria-label', isFirst ? 'Depart' : isLast ? 'Arrivee' : 'Etape ' + i);
+      input.autocomplete = 'off';
+      field.appendChild(input);
+      row.appendChild(field);
+      attachAutocomplete(input, field, stop);
+
+      var extra = el('div', 'stop__extra');
+      if (!isFirst && !isLast) {
+        var hold = doc.createElement('input');
+        hold.type = 'number';
+        hold.className = 'stop__hold';
+        hold.min = '0'; hold.max = '96'; hold.step = '1';
+        hold.value = stop.hold || 0;
+        hold.title = 'Duree de l arret sur place, en heures';
+        hold.setAttribute('aria-label', 'Duree de l arret a cette etape, en heures');
+        hold.addEventListener('change', function () {
+          stop.hold = Math.max(0, parseInt(hold.value, 10) || 0);
+          persist();
+        });
+        extra.appendChild(hold);
+        extra.appendChild(el('span', 'stop__unit', 'h'));
+      }
+      if (state.stops.length > 2) {
+        var del = el('button', 'stop__del', '×');
+        del.type = 'button';
+        del.title = 'Supprimer ce point';
+        del.setAttribute('aria-label', 'Supprimer ce point');
+        del.addEventListener('click', function () {
+          state.stops.splice(i, 1);
+          renderStops();
+          persist();
+        });
+        extra.appendChild(del);
+      }
+      row.appendChild(extra);
+      stopsBox.appendChild(row);
+      if (!isLast) stopsBox.appendChild(el('div', 'stop__spacer'));
+    });
+  }
+
+  function localMatches(q) {
+    return E.searchPlaces(q, 7).map(function (p) {
+      var sub = [];
+      if (p.rail) sub.push('gare');
+      if (p.air.length) sub.push(p.air.map(function (a) { return a.iata; }).join(' / '));
+      return { kind: 'local', place: p, label: p.name, sub: p.country + (sub.length ? ' — ' + sub.join(', ') : '') };
+    });
+  }
+
+  function attachAutocomplete(input, field, stop) {
+    var drop = null, items = [], cursor = -1, remoteTimer = null, localTimer = null;
+
+    function close() {
+      if (drop) { drop.remove(); drop = null; }
+      items = []; cursor = -1;
+    }
+    function open(list) {
+      close();
+      if (!list.length) return;
+      items = list;
+      drop = el('ul', 'stop__drop');
+      drop.setAttribute('role', 'listbox');
+      list.forEach(function (it, idx) {
+        var li = el('li');
+        li.setAttribute('role', 'option');
+        li.innerHTML = esc(it.label) + '<span class="ac-sub">' + esc(it.sub) +
+          (it.kind === 'remote' ? ' <span class="ac-remote">OpenStreetMap</span>' : '') + '</span>';
+        li.addEventListener('mousedown', function (ev) { ev.preventDefault(); choose(idx); });
+        drop.appendChild(li);
+      });
+      field.appendChild(drop);
+    }
+    function highlight(n) {
+      if (!drop) return;
+      cursor = n;
+      Array.prototype.forEach.call(drop.children, function (li, i) {
+        li.setAttribute('aria-selected', i === n ? 'true' : 'false');
+      });
+    }
+    function choose(idx) {
+      var it = items[idx];
+      if (!it) return;
+      if (it.kind === 'local') {
+        stop.place = it.place;
+        stop.query = it.place.name;
+      } else {
+        stop.place = E.buildCustomPlace(it.label, it.lat, it.lon, { country: it.country, cc: it.cc });
+        stop.query = it.label;
+      }
+      input.value = stop.query;
+      close();
+      persist();
+    }
+    function search() {
+      var q = input.value.trim();
+      if (q.length < 2) { close(); return; }
+      var list = localMatches(q);
+      open(list);
+      if (state.opts.useLive && q.length >= 3 && T.providers.available) {
+        clearTimeout(remoteTimer);
+        remoteTimer = setTimeout(function () {
+          var current = input.value.trim();
+          if (current !== q) return;
+          T.providers.geocode(q).then(function (rows) {
+            if (input.value.trim() !== q) return;
+            var extra = rows.slice(0, 4).map(function (r) {
+              return { kind: 'remote', label: r.label, sub: r.detail.split(',').slice(-3).join(',').trim(), lat: r.lat, lon: r.lon, country: r.country, cc: r.cc };
+            }).filter(function (r) {
+              return !list.some(function (l) { return E.normalize(l.label) === E.normalize(r.label); });
+            });
+            if (extra.length) open(list.concat(extra));
+          });
+        }, 520);
+      }
+    }
+
+    input.addEventListener('input', function () {
+      stop.query = input.value;
+      stop.place = null;
+      clearTimeout(localTimer);
+      localTimer = setTimeout(search, 130);
+    });
+    input.addEventListener('focus', function () { if (input.value.trim().length >= 2 && !stop.place) search(); });
+    input.addEventListener('blur', function () { setTimeout(close, 120); });
+    input.addEventListener('keydown', function (ev) {
+      if (!drop) return;
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); highlight((cursor + 1) % items.length); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlight((cursor - 1 + items.length) % items.length); }
+      else if (ev.key === 'Enter' && cursor >= 0) { ev.preventDefault(); choose(cursor); }
+      else if (ev.key === 'Escape') close();
+    });
+  }
+
+  /* --------------------------------------------------------- options ------- */
+
+  function readOptions() {
+    var o = state.opts;
+    o.passengers = Math.max(1, parseInt($('#passengers').value, 10) || 1);
+    o.fuel = $('#fuel').value;
+    o.consumption = parseFloat($('#consumption').value) || T.DEFAULTS.consumption;
+    o.fuelPrice = parseFloat($('#fuelPrice').value) || T.DEFAULTS.fuelPrice;
+    o.kwhPer100 = parseFloat($('#kwhPer100').value) || T.DEFAULTS.kwhPer100;
+    o.kwhPrice = parseFloat($('#kwhPrice').value) || T.DEFAULTS.kwhPrice;
+    o.occupants = Math.max(1, parseInt($('#occupants').value, 10) || 1);
+    o.tolls = $('#tolls').checked;
+    o.includeWear = $('#includeWear').checked;
+    o.railClass = $('#railClass').value;
+    o.railCard = $('#railCard').value;
+    o.railTransferMin = parseInt($('#railTransferMin').value, 10);
+    if (isNaN(o.railTransferMin)) o.railTransferMin = T.DEFAULTS.railTransferMin;
+    o.checkinMin = parseInt($('#checkinMin').value, 10) || T.DEFAULTS.checkinMin;
+    o.disembarkMin = parseInt($('#disembarkMin').value, 10) || T.DEFAULTS.disembarkMin;
+    o.hold = $('#hold').checked;
+    o.useLive = $('#useLive').checked;
+    state.modes.car = $('#modeCar').checked;
+    state.modes.train = $('#modeTrain').checked;
+    state.modes.plane = $('#modePlane').checked;
+  }
+
+  function departureDate() {
+    var d = $('#date').value, t = $('#time').value || '08:00';
+    var parts = d.split('-'), tp = t.split(':');
+    return new Date(+parts[0], +parts[1] - 1, +parts[2], +tp[0], +tp[1]);
+  }
+
+  function persist() {
+    try {
+      global.localStorage.setItem('travia.form', JSON.stringify({
+        stops: state.stops.map(function (s) { return { query: s.query, id: s.place && !s.place.custom ? s.place.id : null, lat: s.place && s.place.custom ? s.place.lat : null, lon: s.place && s.place.custom ? s.place.lon : null, hold: s.hold }; }),
+        date: $('#date').value, time: $('#time').value,
+        passengers: $('#passengers').value,
+        modes: state.modes, opts: state.opts
+      }));
+    } catch (e) { /* stockage indisponible : sans consequence */ }
+  }
+
+  function restore() {
+    var raw;
+    try { raw = global.localStorage.getItem('travia.form'); } catch (e) { raw = null; }
+    if (!raw) return false;
+    var saved;
+    try { saved = JSON.parse(raw); } catch (e) { return false; }
+    if (!saved || !saved.stops || saved.stops.length < 2) return false;
+    state.stops = saved.stops.map(function (s) {
+      var stop = newStop(s.query);
+      stop.hold = s.hold || 0;
+      if (s.id) stop.place = E.placeById(s.id);
+      else if (s.lat != null) stop.place = E.buildCustomPlace(s.query, s.lat, s.lon, null);
+      return stop;
+    });
+    if (saved.time) $('#time').value = saved.time;
+    if (saved.passengers) $('#passengers').value = saved.passengers;
+    if (saved.modes) {
+      $('#modeCar').checked = saved.modes.car !== false;
+      $('#modeTrain').checked = saved.modes.train !== false;
+      $('#modePlane').checked = saved.modes.plane !== false;
+    }
+    if (saved.opts) {
+      var o = saved.opts;
+      if (o.fuel) $('#fuel').value = o.fuel;
+      if (o.consumption) $('#consumption').value = o.consumption;
+      if (o.fuelPrice) $('#fuelPrice').value = o.fuelPrice;
+      if (o.kwhPer100) $('#kwhPer100').value = o.kwhPer100;
+      if (o.kwhPrice) $('#kwhPrice').value = o.kwhPrice;
+      if (o.occupants) $('#occupants').value = o.occupants;
+      $('#tolls').checked = o.tolls !== false;
+      $('#includeWear').checked = !!o.includeWear;
+      if (o.railClass) $('#railClass').value = o.railClass;
+      if (o.railCard) $('#railCard').value = o.railCard;
+      if (o.railTransferMin != null) $('#railTransferMin').value = o.railTransferMin;
+      if (o.checkinMin) $('#checkinMin').value = o.checkinMin;
+      if (o.disembarkMin) $('#disembarkMin').value = o.disembarkMin;
+      $('#hold').checked = !!o.hold;
+      $('#useLive').checked = o.useLive !== false;
+    }
+    return true;
+  }
+
+  /* ------------------------------------------------- resolution des lieux --- */
+
+  function resolveStops() {
+    var jobs = state.stops.map(function (stop) {
+      if (stop.place) return Promise.resolve(stop.place);
+      var q = (stop.query || '').trim();
+      if (!q) return Promise.resolve(null);
+      var local = E.searchPlaces(q, 1)[0];
+      if (local) { stop.place = local; return Promise.resolve(local); }
+      if (!state.opts.useLive || !T.providers.available) return Promise.resolve(null);
+      return T.providers.geocode(q).then(function (rows) {
+        if (!rows.length) return null;
+        stop.place = E.buildCustomPlace(rows[0].label, rows[0].lat, rows[0].lon,
+          { country: rows[0].country, cc: rows[0].cc });
+        return stop.place;
+      });
+    });
+    return Promise.all(jobs);
+  }
+
+  /* --------------------------------------------------------- calcul --------- */
+
+  function fetchRoute(places) {
+    if (!state.opts.useLive || !T.providers.available || !state.modes.car) {
+      state.routeStatus = state.modes.car ? 'off' : 'none';
+      return Promise.resolve(null);
+    }
+    return T.providers.route(places).then(function (r) {
+      state.routeStatus = r ? 'live' : 'fallback';
+      return r;
+    });
+  }
+
+  function defaultMode(leg) {
+    var best = null, bestDur = Infinity;
+    MODE_ORDER.forEach(function (m) {
+      if (!state.modes[m]) return;
+      var d = E.legDuration(leg, m, state.opts);
+      if (d != null && d < bestDur) { bestDur = d; best = m; }
+    });
+    return best;
+  }
+
+  function offersFor(leg, mode) {
+    if (mode === 'train') return leg.train.available ? leg.train.offers : [];
+    if (mode === 'plane') return leg.plane.available ? leg.plane.offers : [];
+    return [];
+  }
+
+  /* Recalcule tous les segments en chainant les horaires selon les choix. */
+  function computeAll() {
+    var places = state.resolved;
+    var now = new Date();
+    var t = departureDate();
+    var legs = [];
+    for (var i = 0; i < places.length - 1; i++) {
+      var measured = state.route && state.route.legs && state.route.legs[i] ? state.route.legs[i] : null;
+      var leg = E.computeLeg(places[i], places[i + 1], t, state.opts, now, measured);
+      leg.index = i;
+
+      var pick = state.picks[i] || (state.picks[i] = { mode: null, offer: 0 });
+      if (!pick.mode || !modeAvailable(leg, pick.mode)) {
+        pick.mode = defaultMode(leg);
+        pick.offer = -1;
+      }
+      var offers = offersFor(leg, pick.mode);
+      if (pick.mode && pick.mode !== 'car') {
+        /* par defaut, le premier depart possible apres l'arrivee sur place :
+           c'est le choix qui minimise l'attente en correspondance */
+        if (pick.offer < 0 || pick.offer >= offers.length) pick.offer = 0;
+      }
+      leg.pick = pick;
+      leg.chosen = pick.mode === 'car' ? leg.car : offers[pick.offer];
+      legs.push(leg);
+
+      if (leg.chosen) {
+        var arrive = pick.mode === 'car'
+          ? new Date(t.getTime() + leg.car.durationMin * 60000)
+          : new Date(leg.chosen.arrivee.getTime() + (leg.chosen.egressMin || 0) * 60000);
+        t = new Date(arrive.getTime() + (state.stops[i + 1].hold || 0) * 3600000);
+      } else {
+        t = new Date(t.getTime() + 3600000);
+      }
+    }
+    return legs;
+  }
+
+  function modeAvailable(leg, mode) {
+    if (!state.modes[mode]) return false;
+    if (mode === 'car') return leg.car.available;
+    return leg[mode].available;
+  }
+
+  /* Meilleur total par mode sur l'ensemble de l'itineraire. */
+  function itineraryTotals(legs) {
+    var out = {};
+    MODE_ORDER.forEach(function (m) {
+      var okAll = legs.every(function (l) { return modeAvailable(l, m); });
+      if (!okAll) {
+        var blocked = legs.filter(function (l) { return !modeAvailable(l, m); })[0];
+        out[m] = {
+          available: false,
+          reason: !state.modes[m] ? 'Mode non retenu dans la comparaison'
+            : (m === 'car' ? blocked.car.reason : blocked[m].reason)
+        };
+        return;
+      }
+      var dur = 0, price = 0, co2 = 0, km = 0;
+      legs.forEach(function (l) {
+        dur += E.legDuration(l, m, state.opts);
+        price += E.legPrice(l, m, state.opts);
+        co2 += E.legCo2(l, m);
+        km += m === 'car' ? l.car.distanceKm : (m === 'train' ? l.train.distanceKm : l.plane.distanceKm);
+      });
+      out[m] = { available: true, durationMin: dur, price: price, co2: co2, km: km };
+    });
+    return out;
+  }
+
+  /* ---------------------------------------------------------- rendu --------- */
+
+  var results = $('#results');
+
+  function badge(text, kind) {
+    return '<span class="badge' + (kind ? ' badge--' + kind : '') + '">' + esc(text) + '</span>';
+  }
+
+  function renderComparison(legs, totals) {
+    var avail = MODE_ORDER.filter(function (m) { return totals[m].available; });
+    var bestDur = null, bestPrice = null, bestCo2 = null;
+    avail.forEach(function (m) {
+      if (bestDur === null || totals[m].durationMin < totals[bestDur].durationMin) bestDur = m;
+      if (bestPrice === null || totals[m].price < totals[bestPrice].price) bestPrice = m;
+      if (bestCo2 === null || totals[m].co2 < totals[bestCo2].co2) bestCo2 = m;
+    });
+
+    var multi = state.opts.passengers > 1;
+    var rows = MODE_ORDER.map(function (m) {
+      var t = totals[m];
+      if (!t.available) {
+        return '<tr class="mode-row mode-row--' + m + ' mode-row--off"><td><span class="mode-name">' +
+          MODES[m].label + '</span></td><td colspan="' + (multi ? 4 : 3) + '">' +
+          esc(t.reason || 'Indisponible sur cet itineraire') + '</td></tr>';
+      }
+      return '<tr class="mode-row mode-row--' + m + '">' +
+        '<td><span class="mode-name">' + MODES[m].label + '</span>' +
+        '<span class="mode-sub">' + fmtKm(t.km) + (m === 'car' && state.opts.occupants > 1 ? ' — cout partage a ' + state.opts.occupants : '') + '</span></td>' +
+        '<td class="num">' + fmtDur(t.durationMin) + (m === bestDur ? '<span class="flag flag--best">le plus rapide</span>' : '') + '</td>' +
+        '<td class="num">' + fmtPrice(Math.round(t.price * 100) / 100) + (m === bestPrice ? '<span class="flag flag--best">le moins cher</span>' : '') + '</td>' +
+        '<td class="num">' + fmtCo2(t.co2) + (m === bestCo2 ? '<span class="flag flag--best">le plus sobre</span>' : '') + '</td>' +
+        (multi ? '<td class="num">' + fmtPrice(Math.round(t.price * state.opts.passengers * 100) / 100) + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    var maxDur = 0, maxPrice = 0;
+    avail.forEach(function (m) {
+      maxDur = Math.max(maxDur, totals[m].durationMin);
+      maxPrice = Math.max(maxPrice, totals[m].price);
+    });
+    function barSet(caption, key, format, max) {
+      return '<div class="bars__caption">' + caption + '</div>' + avail.map(function (m) {
+        var v = totals[m][key];
+        return '<div class="bar"><span class="bar__label">' + MODES[m].label + '</span>' +
+          '<span class="bar__track"><span class="bar__fill bar__fill--' + m + '" style="width:' +
+          Math.max(2, (v / max) * 100).toFixed(1) + '%"></span>' +
+          '<span class="bar__value">' + format(v) + '</span></span></div>';
+      }).join('');
+    }
+
+    return '<section class="rsection">' +
+      '<div class="rsection__head"><h2>Comparaison des modes</h2>' +
+      '<span class="rsection__note">Duree porte a porte, hors attente entre segments — prix par voyageur</span></div>' +
+      '<div class="table-scroll"><table class="grid"><thead><tr>' +
+      '<th>Mode</th><th class="num">Duree la plus courte</th><th class="num">Prix le plus bas</th>' +
+      '<th class="num">CO<sub>2</sub> / voyageur</th>' +
+      (multi ? '<th class="num">Total ' + state.opts.passengers + ' voyageurs</th>' : '') +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      (avail.length > 1 ? '<div class="bars">' + barSet('Duree', 'durationMin', fmtDur, maxDur) +
+        barSet('Prix par voyageur', 'price', function (v) { return fmtPrice(Math.round(v)); }, maxPrice) + '</div>' : '') +
+      '</section>';
+  }
+
+  function carPanel(leg) {
+    var c = leg.car;
+    if (!c.available) return '<p class="unavailable">' + esc(c.reason) + '</p>';
+    var items = c.breakdown.map(function (b) {
+      return '<li><span>' + esc(b.label) + '</span><strong>' + fmtPrice(b.value) + '</strong></li>';
+    }).join('');
+    return '<div class="table-scroll"><table class="grid"><thead><tr>' +
+      '<th>Trajet</th><th class="num">Depart</th><th class="num">Arrivee</th><th class="num">Distance</th>' +
+      '<th class="num">Conduite</th><th class="num">Cout par personne</th></tr></thead><tbody><tr>' +
+      '<td><span class="op-name">Vehicule personnel</span><span class="op-sub">' +
+      (c.source === 'osrm' ? 'Itineraire mesure via OSRM' : 'Distance estimee') +
+      (c.ferry ? ' — ' + esc(c.ferry) : '') + '</span></td>' +
+      '<td class="num time">' + fmtClock(c.depart, c.depart) + '</td>' +
+      '<td class="num time">' + fmtClock(c.arrivee, c.depart) + '</td>' +
+      '<td class="num">' + fmtKm(c.distanceKm) + '</td>' +
+      '<td class="num">' + fmtDur(c.driveMin) + (c.breaksMin ? ' <span class="flag">+ ' + c.breaksMin + ' min de pause</span>' : '') + '</td>' +
+      '<td class="num">' + fmtPrice(c.costPerPerson) + '</td></tr></tbody></table></div>' +
+      '<ul class="breakdown">' + items +
+      '<li><span>Total du vehicule' + (c.occupants > 1 ? ' (partage a ' + c.occupants + ')' : '') + '</span><strong>' + fmtPrice(c.costTotal) + '</strong></li>' +
+      '<li><span>Emissions par personne</span><strong>' + fmtCo2(c.co2PerPerson) + '</strong></li></ul>' +
+      (c.peak ? '<p class="rsection__note">Depart en heure de pointe : une majoration de temps a ete appliquee.</p>' : '');
+  }
+
+  function offersPanel(leg, mode) {
+    var res = leg[mode];
+    if (!res.available) return '<p class="unavailable">' + esc(res.reason) + '</p>';
+    var ref = leg.depart;
+    var expanded = state.expanded[leg.index + ':' + mode];
+    var shown = expanded ? res.offers : res.offers.slice(0, 8);
+    if (!expanded && leg.pick.offer >= shown.length && res.offers[leg.pick.offer]) {
+      shown = res.offers.slice(0, leg.pick.offer + 1);
+    }
+    var rows = shown.map(function (o, idx) {
+      var picked = leg.pick.mode === mode && leg.pick.offer === idx;
+      var tags = '';
+      if (o === res.cheapest) tags += '<span class="flag flag--best">prix mini</span>';
+      if (o === res.fastest && o !== res.cheapest) tags += '<span class="flag flag--best">plus rapide</span>';
+      if (o.night) tags += '<span class="flag">de nuit</span>';
+      if (o.generic) tags += '<span class="flag">estimation generique</span>';
+      var sub = mode === 'train'
+        ? esc(o.company + ' — ' + o.klass)
+        : esc(o.company + ' — vol ' + o.code);
+      var link = (o.transfers ? o.transfers + (mode === 'train' ? ' correspondance' + (o.transfers > 1 ? 's' : '') : ' escale' + (o.transfers > 1 ? 's' : '')) : 'direct');
+      return '<tr class="' + (picked ? 'picked' : '') + '">' +
+        '<td><input type="radio" class="offer-pick" name="pick-' + leg.index + '" ' +
+        'data-leg="' + leg.index + '" data-mode="' + mode + '" data-offer="' + idx + '"' + (picked ? ' checked' : '') +
+        ' aria-label="Retenir ' + esc(o.operator) + ' au depart de ' + pad(o.depart.getHours()) + 'h' + pad(o.depart.getMinutes()) + '"></td>' +
+        '<td><span class="op-name">' + esc(o.operator) + '</span><span class="op-sub">' + sub + '</span>' +
+        '<span class="op-sub">' + esc(o.fromLabel) + ' vers ' + esc(o.toLabel) + '</span></td>' +
+        '<td class="num time">' + fmtClock(o.depart, ref) + '</td>' +
+        '<td class="num time">' + fmtClock(o.arrivee, ref) + '</td>' +
+        '<td class="num">' + fmtDur(o.durationMin) + '<span class="op-sub">' + fmtDur(o.doorToDoorMin) + ' porte a porte — ' + link + '</span></td>' +
+        '<td class="num">' + fmtPrice(o.pricePerPerson) + tags +
+        (state.opts.passengers > 1 ? '<span class="op-sub">' + fmtPrice(o.price) + ' au total</span>' : '') +
+        '<span class="op-sub"><a href="' + esc(o.url) + '" target="_blank" rel="noopener noreferrer">' +
+        esc(shortHost(o.url)) + '</a></span></td>' +
+        '</tr>';
+    }).join('');
+
+    var accessNote = mode === 'train'
+      ? 'Acces aux gares compte pour ' + res.offers[0].accessMin + ' min au depart et ' + res.offers[0].egressMin + ' min a l arrivee.'
+      : 'Porte a porte : ' + res.offers[0].accessMin + ' min avant le vol (acces et enregistrement) et ' + res.offers[0].egressMin + ' min apres.';
+
+    var more = res.offers.length > shown.length
+      ? '<button type="button" class="btn btn--ghost more" data-leg="' + leg.index + '" data-mode="' + mode + '">' +
+        'Afficher les ' + (res.offers.length - shown.length) + ' autres departs</button>'
+      : '';
+
+    return '<div class="table-scroll"><table class="grid"><thead><tr>' +
+      '<th><span class="sr">Choix</span></th><th>Compagnie et points d arret</th><th class="num">Depart</th><th class="num">Arrivee</th>' +
+      '<th class="num">Duree</th><th class="num">Prix / voyageur</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' + more +
+      '<p class="rsection__note" style="margin-top:10px">' + esc(accessNote) +
+      ' Distance retenue : ' + fmtKm(res.distanceKm) + '. Tarifs estimes par le modele, a verifier aupres de la compagnie.</p>';
+  }
+
+  function legCard(leg) {
+    var tabs = MODE_ORDER.map(function (m) {
+      var enabled = state.modes[m];
+      var ok = enabled && modeAvailable(leg, m);
+      var dur = ok ? E.legDuration(leg, m, state.opts) : null;
+      var price = ok ? E.legPrice(leg, m, state.opts) : null;
+      var selected = leg.pick.mode === m;
+      return '<button type="button" class="tab tab--' + m + '" role="tab" data-leg="' + leg.index + '" data-mode="' + m + '"' +
+        ' aria-selected="' + (selected ? 'true' : 'false') + '"' + (ok ? '' : ' disabled') + '>' +
+        '<span class="tab__name">' + MODES[m].label + '</span>' +
+        '<span class="tab__main">' + (ok ? fmtDur(dur) : (enabled ? 'indisponible' : 'non compare')) + '</span>' +
+        '<span class="tab__sub">' + (ok ? 'a partir de ' + fmtPrice(Math.round(price * 100) / 100) : '&nbsp;') + '</span>' +
+        '</button>';
+    }).join('');
+
+    var body = leg.pick.mode === 'car' ? carPanel(leg)
+      : leg.pick.mode ? offersPanel(leg, leg.pick.mode)
+      : '<p class="unavailable">Aucun mode disponible sur ce segment avec les options retenues.</p>';
+
+    var hold = state.stops[leg.index + 1] && leg.index + 1 < state.stops.length - 1;
+
+    return '<article class="leg">' +
+      '<div class="leg__head"><h3 class="leg__title">' + (leg.index + 1) + '. ' +
+      esc(leg.from.name) + ' — ' + esc(leg.to.name) + '</h3>' +
+      '<span class="leg__meta">' + fmtKm(leg.geoKm) + ' a vol d oiseau — depart le ' + fmtDate(leg.depart) + ' vers ' + pad(leg.depart.getHours()) + ':' + pad(leg.depart.getMinutes()) +
+      (hold ? ' — arret de ' + (state.stops[leg.index + 1].hold || 0) + ' h a l etape' : '') + '</span></div>' +
+      '<div class="leg__tabs" role="tablist">' + tabs + '</div>' +
+      '<div class="leg__body">' + body + '</div>' +
+      '</article>';
+  }
+
+  function totalBar(legs) {
+    var travel = 0, price = 0, co2 = 0, ok = true, path = [];
+    legs.forEach(function (l) {
+      if (!l.chosen) { ok = false; return; }
+      if (l.pick.mode === 'car') {
+        travel += l.car.durationMin; price += l.car.costPerPerson; co2 += l.car.co2PerPerson;
+      } else {
+        travel += l.chosen.durationMin + (l.chosen.accessMin || 0) + (l.chosen.egressMin || 0);
+        price += l.chosen.pricePerPerson; co2 += l.chosen.co2PerPerson;
+      }
+      path.push(MODES[l.pick.mode].label);
+    });
+    if (!ok) return '';
+
+    /* duree reelle de bout en bout : du depart du premier segment a l'arrivee
+       du dernier, attentes entre correspondances comprises */
+    var first = legs[0];
+    var start = first.pick.mode === 'car' ? first.car.depart
+      : new Date(first.chosen.depart.getTime() - (first.chosen.accessMin || 0) * 60000);
+    var last = legs[legs.length - 1];
+    var arrival = last.pick.mode === 'car' ? last.car.arrivee
+      : new Date(last.chosen.arrivee.getTime() + (last.chosen.egressMin || 0) * 60000);
+    var dur = (arrival - start) / 60000;
+    var hold = 0;
+    legs.forEach(function (l, i) { if (i > 0) hold += (state.stops[i].hold || 0) * 60; });
+    var wait = Math.max(0, dur - travel - hold);
+
+    return '<div class="total"><div class="total__set">' +
+      '<div class="total__item"><span class="total__key">Itineraire retenu</span><span class="total__path">' +
+      path.join(' puis ') + (wait > 4 ? ' — ' + fmtDur(wait) + ' d attente' : '') +
+      (hold ? ' — ' + fmtDur(hold) + ' sur place' : '') + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Duree de bout en bout</span><span class="total__val">' + fmtDur(dur) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Dont transport</span><span class="total__val">' + fmtDur(travel) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Prix par voyageur</span><span class="total__val">' + fmtPrice(Math.round(price * 100) / 100) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">CO<sub>2</sub> par voyageur</span><span class="total__val">' + fmtCo2(co2) + '</span></div>' +
+      '<div class="total__item"><span class="total__key">Arrivee</span><span class="total__val">' + fmtDate(arrival) + ' ' + pad(arrival.getHours()) + ':' + pad(arrival.getMinutes()) + '</span></div>' +
+      '</div></div>';
+  }
+
+  function render() {
+    var legs = computeAll();
+    state.legs = legs;
+    var totals = itineraryTotals(legs);
+
+    var routeBadge = state.routeStatus === 'live'
+      ? badge('Route mesuree — OSRM', 'live')
+      : state.routeStatus === 'fallback'
+        ? badge('Service OSRM injoignable — distances estimees', 'model')
+        : state.routeStatus === 'off'
+          ? badge('Distances routieres estimees', 'model')
+          : '';
+
+    var html = '<div class="badges">' + routeBadge +
+      badge('Horaires et tarifs : modele TravIA', 'model') +
+      badge(state.stops.length + ' points, ' + legs.length + ' segment' + (legs.length > 1 ? 's' : ''), '') +
+      badge('Calcule le ' + new Date().toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), '') +
+      '</div>';
+
+    html += renderComparison(legs, totals);
+    html += '<section class="rsection"><div class="rsection__head"><h2>Segments et offres</h2>' +
+      '<span class="rsection__note">Choisissez un mode et un depart par segment</span></div>' +
+      legs.map(legCard).join('') + '</section>';
+    html += totalBar(legs);
+
+    results.innerHTML = html;
+
+    Array.prototype.forEach.call(results.querySelectorAll('.tab'), function (btn) {
+      btn.addEventListener('click', function () {
+        var i = +btn.getAttribute('data-leg');
+        state.picks[i] = { mode: btn.getAttribute('data-mode'), offer: -1 };
+        render();
+      });
+    });
+    Array.prototype.forEach.call(results.querySelectorAll('.more'), function (btn) {
+      btn.addEventListener('click', function () {
+        state.expanded[btn.getAttribute('data-leg') + ':' + btn.getAttribute('data-mode')] = true;
+        render();
+      });
+    });
+    Array.prototype.forEach.call(results.querySelectorAll('.offer-pick'), function (input) {
+      input.addEventListener('change', function () {
+        var i = +input.getAttribute('data-leg');
+        state.picks[i] = { mode: input.getAttribute('data-mode'), offer: +input.getAttribute('data-offer') };
+        render();
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------- pilotage --- */
+
+  var note = $('#formNote');
+  function setNote(msg, isError) {
+    note.innerHTML = msg || '';
+    note.className = 'form-note' + (isError ? ' form-note--error' : '');
+  }
+
+  function run(ev) {
+    if (ev) ev.preventDefault();
+    if (state.busy) return;
+    readOptions();
+    persist();
+
+    if (!state.modes.car && !state.modes.train && !state.modes.plane) {
+      setNote('Selectionnez au moins un mode de transport.', true);
+      return;
+    }
+    if (!$('#date').value) { setNote('Indiquez une date de depart.', true); return; }
+
+    var btn = $('#compute');
+    state.busy = true;
+    btn.disabled = true;
+    setNote('<span class="spinner"></span>Resolution des lieux et calcul en cours');
+
+    resolveStops().then(function (places) {
+      var missing = [];
+      places.forEach(function (p, i) {
+        if (!p) missing.push(state.stops[i].query || ('point ' + (i + 1)));
+      });
+      if (missing.length) {
+        throw new Error('Lieu introuvable : ' + missing.join(', ') + '. Choisissez une proposition dans la liste.');
+      }
+      state.resolved = places;
+      state.picks = [];
+      return fetchRoute(places);
+    }).then(function (route) {
+      state.route = route && route.legs && route.legs.length === state.resolved.length - 1 ? route : null;
+      if (route && !state.route) state.routeStatus = 'fallback';
+      render();
+      setNote(state.routeStatus === 'live'
+        ? 'Distances routieres mesurees sur OpenStreetMap. Tarifs et horaires estimes.'
+        : 'Tarifs, horaires et distances estimes par le modele.');
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }).catch(function (err) {
+      setNote(esc(err.message || 'Le calcul a echoue.'), true);
+    }).then(function () {
+      state.busy = false;
+      btn.disabled = false;
+    });
+  }
+
+  /* ------------------------------------------------------------ initialisation */
+
+  function fillCards() {
+    var sel = $('#railCard');
+    Object.keys(T.RAIL_CARDS).forEach(function (k) {
+      var opt = doc.createElement('option');
+      opt.value = k;
+      opt.textContent = T.RAIL_CARDS[k].label;
+      sel.appendChild(opt);
+    });
+  }
+
+  function syncFuelFields() {
+    var electric = $('#fuel').value === 'electrique';
+    $('#consField').hidden = electric;
+    $('#priceField').hidden = electric;
+    $('#kwhField').hidden = !electric;
+    $('#kwhPriceField').hidden = !electric;
+  }
+
+  function initTheme() {
+    var saved;
+    try { saved = global.localStorage.getItem('travia.theme'); } catch (e) { saved = null; }
+    if (saved) doc.documentElement.setAttribute('data-theme', saved);
+    $('#themeToggle').addEventListener('click', function () {
+      var current = doc.documentElement.getAttribute('data-theme');
+      var isDark = current ? current === 'dark'
+        : global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)').matches;
+      var next = isDark ? 'light' : 'dark';
+      doc.documentElement.setAttribute('data-theme', next);
+      try { global.localStorage.setItem('travia.theme', next); } catch (e) { /* ignore */ }
+    });
+  }
+
+  function init() {
+    fillCards();
+    initTheme();
+
+    /* version autonome en un seul fichier : les appels reseau sont bloques */
+    if (T.STANDALONE) {
+      var live = $('#useLive');
+      live.checked = false;
+      live.disabled = true;
+      if (live.nextSibling) {
+        live.nextSibling.textContent = ' Version autonome : distances et durees calculees par le modele interne, sans appel aux services en ligne.';
+      }
+    }
+
+    var d = new Date();
+    d.setDate(d.getDate() + 21);
+    $('#date').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    $('#date').min = new Date().toISOString().slice(0, 10);
+
+    if (!restore()) {
+      state.stops = [newStop('Paris'), newStop('Marseille')];
+      state.stops[0].place = E.placeById('paris');
+      state.stops[1].place = E.placeById('marseille');
+    }
+    renderStops();
+    syncFuelFields();
+
+    $('#addStop').addEventListener('click', function () {
+      state.stops.splice(state.stops.length - 1, 0, newStop(''));
+      renderStops();
+      var inputs = stopsBox.querySelectorAll('input');
+      inputs[state.stops.length - 2].focus();
+    });
+    $('#reverse').addEventListener('click', function () {
+      state.stops.reverse();
+      renderStops();
+      persist();
+    });
+    $('#fuel').addEventListener('change', syncFuelFields);
+    $('#tripForm').addEventListener('submit', run);
+
+    setNote('Referentiel : ' + T.PLACES.length + ' villes, ' + T.RAIL_OPERATORS.length +
+      ' operateurs ferroviaires, ' + T.AIRLINES.length + ' compagnies aeriennes.');
+  }
+
+  if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', init);
+  else init();
+
+  T.app = { state: state, run: run, render: render };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+</script>
+</html>
