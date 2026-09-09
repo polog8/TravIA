@@ -109,12 +109,15 @@
           <input type="number" id="kwhPrice" step="0.01" min="0.05" max="1" value="0.32">
         </label>
         <label class="field">
-          <span class="field__label">Personnes dans le vehicule</span>
-          <input type="number" id="occupants" min="1" max="9" value="1">
+          <span class="field__label">Peages</span>
+          <select id="tollProfile">
+            <option value="oui">Inclus</option>
+            <option value="non">Eviter les peages</option>
+          </select>
         </label>
       </div>
-      <label class="check"><input type="checkbox" id="tolls" checked> Inclure les peages</label>
       <label class="check"><input type="checkbox" id="includeWear"> Inclure l'usure et l'entretien (0,06 EUR/km)</label>
+      <p class="rsection__note">Les frais du vehicule sont partages entre les voyageurs indiques plus haut.</p>
     </details>
 
     <details class="opts">
@@ -154,6 +157,7 @@
     </details>
 
     <label class="check check--live"><input type="checkbox" id="useLive" checked> Interroger OpenStreetMap et OSRM pour les distances routieres reelles</label>
+    <label class="check"><input type="checkbox" id="liveRail" checked> Chercher les horaires ferroviaires reels (service ouvert Deutsche Bahn)</label>
 
     <button type="submit" class="btn btn--primary btn--wide" id="compute">Comparer les trajets</button>
     <p class="form-note" id="formNote"></p>
@@ -199,16 +203,20 @@
   <h2>Methode et sources</h2>
   <div class="method__grid">
     <div>
+      <h3>Gares et aeroports</h3>
+      <p>Une ville expose ses gares et ses aeroports : gares parisiennes, gares nouvelles a l'ecart des centres comme Aix-en-Provence TGV ou Lyon Saint-Exupery, aeroports principaux et secondaires. Le moteur retient la gare adaptee au service et a la direction — un train pour le sud-est part de la gare de Lyon, pas de la gare du Nord — et compte le temps d'acces correspondant. On peut aussi imposer un point d'embarquement en le choisissant dans la liste.</p>
+    </div>
+    <div>
       <h3>Les deux vues</h3>
       <p>Le <strong>comparateur</strong> impose l'itineraire que vous decrivez et met les trois modes en regard, segment par segment. La vue <strong>meilleur itineraire</strong> ne presuppose rien : elle teste chaque mode, puis l'insertion d'un point de correspondance intermediaire, et classe les combinaisons obtenues par duree, par prix ou par emissions.</p>
     </div>
     <div>
       <h3>Ce qui est mesure</h3>
-      <p>Lorsque la connexion aux services ouverts est active, les distances et les durees routieres proviennent d'<strong>OSRM</strong>, calculees sur le graphe OpenStreetMap en respectant l'ordre des points de passage. Les lieux absents du referentiel sont localises par <strong>Nominatim</strong>. En cas d'indisponibilite, le calcul bascule sur le modele interne et le resultat est signale comme estime.</p>
+      <p>Le trace, la distance et la duree routiers viennent d'<strong>OSRM</strong>, calcules sur le graphe OpenStreetMap en respectant l'ordre des points de passage ; la carte affiche la trace reelle. Les lieux absents du referentiel sont localises par <strong>Nominatim</strong>. Les <strong>horaires ferroviaires</strong> sont recherches aupres du service ouvert <strong>v6.db.transport.rest</strong>, passerelle publique vers le systeme horaire de la Deutsche Bahn, qui couvre une grande partie des reseaux europeens ; les offres obtenues portent la mention <em>horaire reel</em>, et le prix lorsqu'il est communique.</p>
     </div>
     <div>
-      <h3>Ce qui est estime</h3>
-      <p>Aucun distributeur ne publie librement ses tarifs ni ses horaires. Les prix et les horaires ferroviaires et aeriens sont donc <strong>reconstitues par un modele</strong> : distance, vitesse commerciale du corridor, grille tarifaire de l'operateur, delai avant le depart, jour, heure et saison. Ce sont des ordres de grandeur destines a la comparaison, pas des offres reservables.</p>
+      <h3>Ce qui reste estime</h3>
+      <p>Les <strong>horaires et tarifs aeriens</strong> ne sont accessibles qu'aux distributeurs sous contrat : aucune source libre ne les publie. Ils restent donc reconstitues par le modele, comme les tarifs ferroviaires que le service ouvert ne renvoie pas, et comme l'ensemble des horaires quand ce service est injoignable. Chaque ligne indique son origine. La vue <em>meilleur itineraire</em> travaille sur le modele seul, car elle evalue des centaines de combinaisons.</p>
     </div>
     <div>
       <h3>Calage du modele</h3>
@@ -216,7 +224,7 @@
     </div>
     <div>
       <h3>Carte</h3>
-      <p>La carte est un <strong>trace schematique</strong> : elle situe les points de l'itineraire et la couleur de chaque segment, en s'appuyant sur les villes du referentiel comme reperes. Ce n'est pas un fond de carte, et le trace routier n'est pas le detail de la route suivie.</p>
+      <p>La carte est affichee des la saisie et suit l'itineraire retenu, un trait par segment a la couleur de son mode. Pour la route, elle trace le <strong>parcours reel mesure</strong> quand OSRM a repondu ; sinon un trace schematique passant par les villes du referentiel, qui servent aussi de reperes geographiques. Il n'y a pas de fond de carte : la page reste autonome.</p>
     </div>
     <div>
       <h3>Emissions</h3>

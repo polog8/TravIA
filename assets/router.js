@@ -92,7 +92,7 @@
     T.PLACES.forEach(function (h) {
       if (h.id === a.id || h.id === b.id) return;
       if (h.weight < 3) return;
-      if (!h.rail && !h.air.length) return;
+      if (!T.engine.hasRail(h) && !h.air.length) return;
       var d = T.engine.haversine(a, h) + T.engine.haversine(h, b);
       var detour = d / direct;
       if (detour > 1.22) return;

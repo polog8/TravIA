@@ -82,6 +82,9 @@
     busy: false
   };
 
+  /* horaires ferroviaires reels : cache des reponses et diagnostic par segment */
+  var liveRail = { cache: {}, status: {} };
+
   var uid = 0;
   function newStop(query) {
     return { uid: ++uid, query: query || '', place: null, anchor: null, hold: 0 };
@@ -152,26 +155,50 @@
      resultats de rue ne sont interroges que si la saisie ressemble a une
      adresse. */
   function localMatches(q) {
-    var out = [];
+    var out = [], seen = {};
+    function push(entry) {
+      var key = entry.label + '|' + entry.place.id;
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(entry);
+    }
+    /* villes correspondantes, avec leurs gares et leurs aeroports */
     E.searchPlaces(q, 4).forEach(function (p) {
-      out.push({
+      push({
         kind: 'local', place: p, anchor: { type: 'city' },
         label: p.name, sub: p.country + ' — centre-ville'
       });
-      if (p.rail) {
-        out.push({
-          kind: 'local', place: p, anchor: { type: 'rail' },
-          label: p.rail.station, sub: 'Gare — ' + p.name
+      (p.rail || []).forEach(function (st) {
+        push({
+          kind: 'local', place: p, anchor: { type: 'rail', station: st.name },
+          label: st.name,
+          sub: 'Gare — ' + p.name + (st.hsr ? ', grande vitesse' : '') + ', acces ' + st.accessMin + ' min'
         });
-      }
+      });
       p.air.forEach(function (a) {
-        out.push({
+        push({
           kind: 'local', place: p, anchor: { type: 'air', iata: a.iata },
-          label: a.name + ' (' + a.iata + ')', sub: 'Aeroport — ' + p.name
+          label: a.name + ' (' + a.iata + ')',
+          sub: 'Aeroport — ' + p.name + ', acces ' + a.transferMin + ' min'
         });
       });
     });
-    return out.slice(0, 9);
+    /* gares et aeroports dont le nom correspond directement */
+    E.searchStations(q, 5).forEach(function (r) {
+      push({
+        kind: 'local', place: r.place, anchor: { type: 'rail', station: r.station.name },
+        label: r.station.name,
+        sub: 'Gare — ' + r.place.name + (r.station.hsr ? ', grande vitesse' : '')
+      });
+    });
+    E.searchAirports(q, 4).forEach(function (r) {
+      push({
+        kind: 'local', place: r.place, anchor: { type: 'air', iata: r.airport.iata },
+        label: r.airport.name + ' (' + r.airport.iata + ')',
+        sub: 'Aeroport — ' + r.place.name
+      });
+    });
+    return out.slice(0, 12);
   }
 
   function looksLikeAddress(q) {
@@ -279,8 +306,9 @@
     o.fuelPrice = parseFloat($('#fuelPrice').value) || T.DEFAULTS.fuelPrice;
     o.kwhPer100 = parseFloat($('#kwhPer100').value) || T.DEFAULTS.kwhPer100;
     o.kwhPrice = parseFloat($('#kwhPrice').value) || T.DEFAULTS.kwhPrice;
-    o.occupants = Math.max(1, parseInt($('#occupants').value, 10) || 1);
-    o.tolls = $('#tolls').checked;
+    /* les voyageurs partagent le vehicule : le cout par personne suit leur nombre */
+    o.occupants = o.passengers;
+    o.tolls = $('#tollProfile').value !== 'non';
     o.includeWear = $('#includeWear').checked;
     o.railClass = $('#railClass').value;
     o.railCard = $('#railCard').value;
@@ -290,6 +318,7 @@
     o.disembarkMin = parseInt($('#disembarkMin').value, 10) || T.DEFAULTS.disembarkMin;
     o.hold = $('#hold').checked;
     o.useLive = $('#useLive').checked;
+    o.liveRail = $('#liveRail').checked;
     state.modes.car = $('#modeCar').checked;
     state.modes.train = $('#modeTrain').checked;
     state.modes.plane = $('#modePlane').checked;
@@ -359,8 +388,7 @@
       if (o.fuelPrice) $('#fuelPrice').value = o.fuelPrice;
       if (o.kwhPer100) $('#kwhPer100').value = o.kwhPer100;
       if (o.kwhPrice) $('#kwhPrice').value = o.kwhPrice;
-      if (o.occupants) $('#occupants').value = o.occupants;
-      $('#tolls').checked = o.tolls !== false;
+      $('#tollProfile').value = o.tolls === false ? 'non' : 'oui';
       $('#includeWear').checked = !!o.includeWear;
       if (o.railClass) $('#railClass').value = o.railClass;
       if (o.railCard) $('#railCard').value = o.railCard;
@@ -369,6 +397,7 @@
       if (o.disembarkMin) $('#disembarkMin').value = o.disembarkMin;
       $('#hold').checked = !!o.hold;
       $('#useLive').checked = o.useLive !== false;
+      $('#liveRail').checked = o.liveRail !== false;
     }
     return true;
   }
@@ -444,6 +473,11 @@
         pick.mode = defaultMode(leg);
         pick.offer = -1;
       }
+      /* horaires reels deja obtenus pour ce segment : ils remplacent le modele */
+      leg.liveKey = railKey(leg);
+      var live = leg.liveKey && liveRail.cache[leg.liveKey];
+      if (live && live !== 'pending' && live.length) E.applyLiveRail(leg, live, state.opts);
+
       var offers = offersFor(leg, pick.mode);
       if (pick.mode && pick.mode !== 'car') {
         if (pick.offer < 0 || pick.offer >= offers.length) pick.offer = 0;
@@ -462,6 +496,61 @@
       }
     }
     return legs;
+  }
+
+  /* Cle stable d'un segment ferroviaire : gares retenues et heure demandee. */
+  function railKey(leg) {
+    if (!leg.train.available || !leg.train.offers.length) return null;
+    var o = leg.train.offers[0];
+    if (!o.fromStation || !o.toStation) return null;
+    return [o.fromStation.name, o.toStation.name, leg.depart.toISOString().slice(0, 13)].join('|');
+  }
+
+  /* Lance les recherches d'horaires reels, puis redessine a leur arrivee. */
+  function fetchLiveRail(legs) {
+    if (!state.opts.useLive || !state.opts.liveRail || !T.providers.available) return;
+    var started = false;
+    legs.slice(0, 3).forEach(function (leg) {
+      var key = leg.liveKey;
+      if (!key || liveRail.cache[key] !== undefined) return;
+      var first = leg.train.offers[0];
+      liveRail.cache[key] = 'pending';
+      liveRail.status[key] = { state: 'pending', label: leg.from.name + ' — ' + leg.to.name };
+      started = true;
+      T.providers.railJourneys(first.fromStation, first.toStation, leg.depart, 6).then(function (res) {
+        if (res && res.offers && res.offers.length) {
+          liveRail.cache[key] = res.offers;
+          liveRail.status[key] = {
+            state: 'ok', label: leg.from.name + ' — ' + leg.to.name,
+            detail: res.offers.length + ' trajets releves', source: res.source
+          };
+        } else {
+          liveRail.cache[key] = null;
+          liveRail.status[key] = {
+            state: 'ko', label: leg.from.name + ' — ' + leg.to.name,
+            detail: (res && res.error) || 'aucun resultat'
+          };
+        }
+        render();
+      });
+    });
+    if (started) renderRailStatus();
+  }
+
+  function renderRailStatus() {
+    var box = $('#railStatus');
+    if (!box) return;
+    var keys = Object.keys(liveRail.status);
+    if (!keys.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = keys.map(function (k) {
+      var st = liveRail.status[k];
+      var text = st.state === 'pending' ? 'recherche des horaires reels'
+        : st.state === 'ok' ? st.detail + ' — source ' + st.source
+        : 'horaires reels indisponibles (' + st.detail + '), repli sur le modele';
+      return '<span class="rail-status rail-status--' + st.state + '">' +
+        esc(st.label) + ' : ' + esc(text) + '</span>';
+    }).join('');
   }
 
   function itineraryTotals(legs) {
@@ -516,7 +605,8 @@
       }
       return '<tr class="mode-row mode-row--' + m + '">' +
         '<td><span class="mode-name">' + MODES[m].label + '</span>' +
-        '<span class="mode-sub">' + fmtKm(t.km) + (m === 'car' && state.opts.occupants > 1 ? ' — cout partage a ' + state.opts.occupants : '') + '</span></td>' +
+        '<span class="mode-sub">' + fmtKm(t.km) +
+        (m === 'car' && state.opts.passengers > 1 ? ' — frais partages entre ' + state.opts.passengers + ' voyageurs' : '') + '</span></td>' +
         '<td class="num">' + fmtDur(t.durationMin) + (m === bestDur ? '<span class="flag flag--best">le plus rapide</span>' : '') + '</td>' +
         '<td class="num">' + fmtPrice(Math.round(t.price * 100) / 100) + (m === bestPrice ? '<span class="flag flag--best">le moins cher</span>' : '') + '</td>' +
         '<td class="num">' + fmtCo2(t.co2) + (m === bestCo2 ? '<span class="flag flag--best">le plus sobre</span>' : '') + '</td>' +
@@ -596,6 +686,8 @@
         ? esc(o.company + ' — ' + o.klass)
         : esc(o.company + ' — vol ' + o.code);
       var link = (o.transfers ? o.transfers + (mode === 'train' ? ' correspondance' + (o.transfers > 1 ? 's' : '') : ' escale' + (o.transfers > 1 ? 's' : '')) : 'direct');
+      if (o.source === 'reel') tags += '<span class="src-tag">horaire reel</span>';
+      if (o.source === 'reel' && o.priceSource === 'estime') tags += '<span class="src-tag src-tag--model">prix estime</span>';
       return '<tr class="' + (picked ? 'picked' : '') + '">' +
         '<td><input type="radio" class="offer-pick" name="pick-' + dirKey + '-' + leg.index + '" ' +
         'data-dir="' + dirKey + '" data-leg="' + leg.index + '" data-mode="' + mode + '" data-offer="' + idx + '"' + (picked ? ' checked' : '') +
@@ -629,6 +721,33 @@
       ' Distance retenue : ' + fmtKm(res.distanceKm) + '. Tarifs estimes par le modele, a verifier aupres de la compagnie.</p>';
   }
 
+  /* Deroule concret du trajet retenu : ce que recouvrent les minutes annoncees. */
+  function timeline(leg, mode, service) {
+    if (!service) return '';
+    var steps = E.itinerarySteps(leg, mode, service, state.opts);
+    if (!steps.length) return '';
+    var total = mode === 'car' ? service.durationMin
+      : (service.doorToDoorMin || service.durationMin);
+    var rows = steps.map(function (st) {
+      return '<li class="tl__row tl__row--' + st.kind + '">' +
+        '<span class="tl__time">' + (st.start ? hhmm(st.start) : '') + '</span>' +
+        '<span class="tl__mark" aria-hidden="true"></span>' +
+        '<span class="tl__body"><b>' + esc(st.label) + '</b>' +
+        '<span>' + (st.min ? fmtDur(st.min) : '') +
+        (st.detail ? (st.min ? ' — ' : '') + esc(st.detail) : '') + '</span></span>' +
+        '</li>';
+    }).join('');
+    var last = steps[steps.length - 1];
+    return '<section class="tl">' +
+      '<h4 class="tl__head">Deroule du trajet retenu' +
+      '<span>' + fmtDur(total) + ' porte a porte, arrivee a ' + (last.end ? hhmm(last.end) : '—') + '</span></h4>' +
+      '<ol class="tl__list">' + rows +
+      '<li class="tl__row tl__row--end"><span class="tl__time">' + (last.end ? hhmm(last.end) : '') + '</span>' +
+      '<span class="tl__mark" aria-hidden="true"></span>' +
+      '<span class="tl__body"><b>Arrivee ' + esc(leg.to.name) + '</b></span></li>' +
+      '</ol></section>';
+  }
+
   function legCard(dirKey, dir, leg, holds) {
     var tabs = MODE_ORDER.map(function (m) {
       var enabled = state.modes[m];
@@ -647,6 +766,7 @@
     var body = leg.pick.mode === 'car' ? carPanel(leg)
       : leg.pick.mode ? offersPanel(dirKey, dir, leg, leg.pick.mode)
       : '<p class="unavailable">Aucun mode disponible sur ce segment avec les options retenues.</p>';
+    if (leg.chosen && leg.pick.mode) body += timeline(leg, leg.pick.mode, leg.chosen);
 
     var holdHours = holds[leg.index + 1] || 0;
 
@@ -739,9 +859,14 @@
           '<td class="num">' + fmtPrice(s.price) + '</td></tr>';
       }).join('');
       var mixed = opt.steps.some(function (s) { return s.mode === 'car'; }) && opt.steps.length > 1;
+      var deroule = opt.steps.map(function (s) {
+        var pseudoLeg = { from: s.from, to: s.to, depart: s.depart };
+        return timeline(pseudoLeg, s.mode, s);
+      }).join('');
       detail = '<div class="opt__detail"><div class="table-scroll"><table class="grid"><thead><tr>' +
         '<th>Mode</th><th>Segment</th><th class="num">Depart</th><th class="num">Arrivee</th>' +
         '<th class="num">Duree</th><th class="num">Prix</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        deroule +
         '<p class="rsection__note" style="margin-top:10px">' +
         (mixed ? 'Un segment en voiture au milieu d un trajet suppose un vehicule disponible sur place (location ou covoiturage), non compte dans le prix. ' : '') +
         'Temps total hors attente avant le premier depart. ' +
@@ -779,7 +904,7 @@
         return '<button type="button" class="sort-btn" data-criterion="' + c[0] + '" aria-pressed="' +
           (state.criterion === c[0] ? 'true' : 'false') + '">' + c[1] + '</button>';
       }).join('') +
-      '<span class="rsection__note">Voiture, train, avion et combinaisons avec une correspondance</span></div>';
+      '<span class="rsection__note">Voiture, train, avion et combinaisons avec une correspondance — horaires du modele</span></div>';
 
     html += bestBlock('out', state.out, state.roundTrip ? 'Aller' : 'Itineraires possibles', dep);
     if (state.roundTrip && state.back.best) {
@@ -860,12 +985,33 @@
       });
     }
     var legs = state.out.legs;
-    if (!legs || !legs.length) return null;
-    return legs.map(function (l) {
+    if (!legs || !legs.length) return previewSegments();
+    var route = state.out.route;
+    return legs.map(function (l, i) {
       var mode = l.pick.mode || 'car';
-      var path = mode === 'plane' ? null : (E.networkPath(l.from, l.to) || {}).nodes;
-      return { from: l.from, to: l.to, mode: mode, path: path };
+      var path = null, measured = false;
+      if (mode === 'car' && route && route.legs[i] && route.legs[i].coords && route.legs[i].coords.length > 2) {
+        path = route.legs[i].coords;      /* trace routiere reelle */
+        measured = true;
+      } else if (mode !== 'plane') {
+        path = (E.networkPath(l.from, l.to) || {}).nodes;
+      }
+      return { from: l.from, to: l.to, mode: mode, path: path, measured: measured };
     });
+  }
+
+  /* Avant tout calcul, la carte situe deja les points saisis. */
+  function previewSegments() {
+    var places = state.stops.map(stopPlace).filter(Boolean);
+    if (places.length < 2) return null;
+    var segs = [];
+    for (var i = 0; i < places.length - 1; i++) {
+      segs.push({
+        from: places[i], to: places[i + 1], mode: 'pending',
+        path: (E.networkPath(places[i], places[i + 1]) || {}).nodes
+      });
+    }
+    return segs;
   }
 
   function renderMap() {
@@ -901,7 +1047,7 @@
       badge(state.stops.length + ' points, ' + state.out.legs.length + ' segment' + (state.out.legs.length > 1 ? 's' : '') +
         (state.roundTrip ? ', aller-retour' : ''), '') +
       badge('Calcule le ' + new Date().toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), '') +
-      '</div>';
+      '</div><div class="rail-status-bar" id="railStatus" hidden></div>';
 
     html += directionBlock('out', state.out, state.out.legs, holdsFor('out'),
       state.roundTrip ? 'Aller' : 'Itineraire', dep);
@@ -930,6 +1076,8 @@
     }
 
     results.innerHTML = html;
+    renderRailStatus();
+    fetchLiveRail((state.out.legs || []).concat(state.back.legs || []));
 
     all('.tab', results).forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -1122,6 +1270,7 @@
 
     if (global.location.hash === '#meilleur-itineraire') state.tab = 'best';
     syncTabs();
+    renderMap();
 
     $('#addStop').addEventListener('click', function () {
       state.stops.splice(state.stops.length - 1, 0, newStop(''));

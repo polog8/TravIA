@@ -11,8 +11,17 @@
   function A(iata, name, transferMin, kind) {
     return { iata: iata, name: name, transferMin: transferMin, kind: kind || 'main' };
   }
+  /* Gare : nom, coordonnees (nulles = celles de la ville), aptitude a la
+     grande vitesse, temps d'acces depuis le centre en minutes. */
+  function S(name, lat, lon, hsr, accessMin, serves) {
+    return {
+      name: name, lat: lat, lon: lon, hsr: !!hsr,
+      accessMin: accessMin == null ? 15 : accessMin,
+      serves: serves || null
+    };
+  }
   function R(station, hsr) {
-    return { station: station, hsr: !!hsr };
+    return [S(station, null, null, hsr, 15)];
   }
   function P(id, name, country, cc, lat, lon, weight, land, rail, air) {
     return {
@@ -141,8 +150,264 @@
     P('shanghai', 'Shanghai', 'Chine', 'CN', 31.2304, 121.4737, 4, 'asie', R('Shanghai Hongqiao', true), [A('PVG', 'Shanghai-Pudong', 55)]),
     P('tokyo', 'Tokyo', 'Japon', 'JP', 35.6762, 139.6503, 5, 'jp', R('Tokyo', true), [A('HND', 'Haneda', 35), A('NRT', 'Narita', 75)]),
     P('seoul', 'Seoul', 'Coree du Sud', 'KR', 37.5665, 126.9780, 4, 'asie', R('Seoul', true), [A('ICN', 'Incheon', 60)]),
-    P('sydney', 'Sydney', 'Australie', 'AU', -33.8688, 151.2093, 4, 'oceanie', null, [A('SYD', 'Sydney-Kingsford Smith', 30)])
+    P('sydney', 'Sydney', 'Australie', 'AU', -33.8688, 151.2093, 4, 'oceanie', null, [A('SYD', 'Sydney-Kingsford Smith', 30)]),
+/* --- France : villes et gares nouvelles --- */
+    P('aix', 'Aix-en-Provence', 'France', 'FR', 43.5297, 5.4474, 3, 'eu', R('Aix-en-Provence Centre', false), []),
+    P('valencefr', 'Valence', 'France', 'FR', 44.9333, 4.8917, 2, 'eu', R('Valence Ville', false), []),
+    P('poitiers', 'Poitiers', 'France', 'FR', 46.5802, 0.3404, 2, 'eu', R('Poitiers', true), []),
+    P('lemans', 'Le Mans', 'France', 'FR', 48.0061, 0.1996, 2, 'eu', R('Le Mans', true), []),
+    P('lorient', 'Lorient', 'France', 'FR', 47.7483, -3.3702, 2, 'eu', R('Lorient', false), [A('LRT', 'Lorient-Bretagne Sud', 20)]),
+    P('calais', 'Calais', 'France', 'FR', 50.9513, 1.8587, 2, 'eu', R('Calais-Frethun', true), []),
+    P('amiens', 'Amiens', 'France', 'FR', 49.8941, 2.2958, 2, 'eu', R('Amiens', false), []),
+    P('bastia', 'Bastia', 'France', 'FR', 42.7028, 9.4503, 2, 'corse', R('Bastia', false), [A('BIA', 'Bastia-Poretta', 25)]),
+    /* --- Europe --- */
+    P('lausanne', 'Lausanne', 'Suisse', 'CH', 46.5197, 6.6323, 2, 'eu', R('Lausanne', false), []),
+    P('salzbourg', 'Salzbourg', 'Autriche', 'AT', 47.8095, 13.0550, 2, 'eu', R('Salzburg Hauptbahnhof', true), [A('SZG', 'Salzbourg-Mozart', 20)]),
+    P('innsbruck', 'Innsbruck', 'Autriche', 'AT', 47.2692, 11.4041, 2, 'eu', R('Innsbruck Hauptbahnhof', true), [A('INN', 'Innsbruck', 15)]),
+    P('graz', 'Graz', 'Autriche', 'AT', 47.0707, 15.4395, 2, 'eu', R('Graz Hauptbahnhof', false), [A('GRZ', 'Graz', 20)]),
+    P('genes', 'Genes', 'Italie', 'IT', 44.4056, 8.9463, 3, 'eu', R('Genova Piazza Principe', false), [A('GOA', 'Genes-Cristoforo Colombo', 20)]),
+    P('verone', 'Verone', 'Italie', 'IT', 45.4384, 10.9916, 2, 'eu', R('Verona Porta Nuova', true), [A('VRN', 'Verone-Villafranca', 25)]),
+    P('pise', 'Pise', 'Italie', 'IT', 43.7228, 10.4017, 2, 'eu', R('Pisa Centrale', false), [A('PSA', 'Pise-Galilee', 15)]),
+    P('palerme', 'Palerme', 'Italie', 'IT', 38.1157, 13.3615, 3, 'sicile', R('Palermo Centrale', false), [A('PMO', 'Palerme-Punta Raisi', 45)]),
+    P('catane', 'Catane', 'Italie', 'IT', 37.5079, 15.0830, 3, 'sicile', R('Catania Centrale', false), [A('CTA', 'Catane-Fontanarossa', 20)]),
+    P('bari', 'Bari', 'Italie', 'IT', 41.1171, 16.8719, 3, 'eu', R('Bari Centrale', true), [A('BRI', 'Bari-Palese', 25)]),
+    P('cagliari', 'Cagliari', 'Italie', 'IT', 39.2238, 9.1217, 2, 'sardaigne', R('Cagliari', false), [A('CAG', 'Cagliari-Elmas', 20)]),
+    P('alicante', 'Alicante', 'Espagne', 'ES', 38.3452, -0.4810, 3, 'eu', R('Alicante Terminal', true), [A('ALC', 'Alicante-Elche', 25)]),
+    P('saragosse', 'Saragosse', 'Espagne', 'ES', 41.6488, -0.8891, 3, 'eu', R('Zaragoza Delicias', true), [A('ZAZ', 'Saragosse', 25)]),
+    P('grenade', 'Grenade', 'Espagne', 'ES', 37.1773, -3.5986, 2, 'eu', R('Granada', true), [A('GRX', 'Grenade-Jaen', 25)]),
+    P('faro', 'Faro', 'Portugal', 'PT', 37.0194, -7.9304, 2, 'eu', R('Faro', false), [A('FAO', 'Faro', 15)]),
+    P('funchal', 'Funchal', 'Portugal', 'PT', 32.6669, -16.9241, 2, 'madere', null, [A('FNC', 'Madere-Cristiano Ronaldo', 30)]),
+    P('laspalmas', 'Las Palmas', 'Espagne', 'ES', 28.1235, -15.4363, 3, 'canaries', null, [A('LPA', 'Gran Canaria', 30)]),
+    P('tenerife', 'Tenerife', 'Espagne', 'ES', 28.4636, -16.2518, 3, 'canaries-o', null, [A('TFS', 'Tenerife-Sud', 45)]),
+    P('ibiza', 'Ibiza', 'Espagne', 'ES', 38.9067, 1.4206, 2, 'ibiza', null, [A('IBZ', 'Ibiza', 20)]),
+    P('malte', 'La Valette', 'Malte', 'MT', 35.8989, 14.5146, 2, 'malte', null, [A('MLA', 'Malte-Luqa', 25)]),
+    P('larnaca', 'Larnaca', 'Chypre', 'CY', 34.9182, 33.6201, 2, 'chypre', null, [A('LCA', 'Larnaca', 20)]),
+    P('heraklion', 'Heraklion', 'Grece', 'GR', 35.3387, 25.1442, 2, 'crete', null, [A('HER', 'Heraklion-Kazantzakis', 20)]),
+    P('thessalonique', 'Thessalonique', 'Grece', 'GR', 40.6401, 22.9444, 3, 'eu', R('Thessaloniki', false), [A('SKG', 'Thessalonique-Macedoine', 30)]),
+    P('cluj', 'Cluj-Napoca', 'Roumanie', 'RO', 46.7712, 23.6236, 2, 'eu', R('Cluj-Napoca', false), [A('CLJ', 'Cluj-Avram Iancu', 20)]),
+    P('timisoara', 'Timisoara', 'Roumanie', 'RO', 45.7489, 21.2087, 2, 'eu', R('Timisoara Nord', false), [A('TSR', 'Timisoara-Traian Vuia', 20)]),
+    P('sarajevo', 'Sarajevo', 'Bosnie-Herzegovine', 'BA', 43.8563, 18.4131, 2, 'eu', R('Sarajevo', false), [A('SJJ', 'Sarajevo', 20)]),
+    P('split', 'Split', 'Croatie', 'HR', 43.5081, 16.4402, 2, 'eu', R('Split', false), [A('SPU', 'Split', 30)]),
+    P('dubrovnik', 'Dubrovnik', 'Croatie', 'HR', 42.6507, 18.0944, 2, 'eu', null, [A('DBV', 'Dubrovnik', 30)]),
+    P('bratislava', 'Bratislava', 'Slovaquie', 'SK', 48.1486, 17.1077, 2, 'eu', R('Bratislava hlavna stanica', false), [A('BTS', 'Bratislava', 20)]),
+    P('brno', 'Brno', 'Republique tcheque', 'CZ', 49.1951, 16.6068, 2, 'eu', R('Brno hlavni nadrazi', false), [A('BRQ', 'Brno-Turany', 20)]),
+    P('gdansk', 'Gdansk', 'Pologne', 'PL', 54.3520, 18.6466, 2, 'eu', R('Gdansk Glowny', true), [A('GDN', 'Gdansk-Lech Walesa', 25)]),
+    P('wroclaw', 'Wroclaw', 'Pologne', 'PL', 51.1079, 17.0385, 2, 'eu', R('Wroclaw Glowny', false), [A('WRO', 'Wroclaw-Copernic', 20)]),
+    P('poznan', 'Poznan', 'Pologne', 'PL', 52.4064, 16.9252, 2, 'eu', R('Poznan Glowny', false), [A('POZ', 'Poznan-Lawica', 20)]),
+    P('riga', 'Riga', 'Lettonie', 'LV', 56.9496, 24.1052, 3, 'eu', R('Riga', false), [A('RIX', 'Riga', 25)]),
+    P('vilnius', 'Vilnius', 'Lituanie', 'LT', 54.6872, 25.2797, 2, 'eu', R('Vilnius', false), [A('VNO', 'Vilnius', 20)]),
+    P('tallinn', 'Tallinn', 'Estonie', 'EE', 59.4370, 24.7536, 2, 'eu', R('Tallinn Balti jaam', false), [A('TLL', 'Tallinn-Lennart Meri', 15)]),
+    P('goteborg', 'Goteborg', 'Suede', 'SE', 57.7089, 11.9746, 3, 'eu', R('Goteborg Centralstation', true), [A('GOT', 'Goteborg-Landvetter', 30)]),
+    P('malmo', 'Malmo', 'Suede', 'SE', 55.6050, 13.0038, 2, 'eu', R('Malmo Centralstation', true), []),
+    P('bergen', 'Bergen', 'Norvege', 'NO', 60.3913, 5.3221, 2, 'eu', R('Bergen stasjon', false), [A('BGO', 'Bergen-Flesland', 25)]),
+    P('aarhus', 'Aarhus', 'Danemark', 'DK', 56.1629, 10.2039, 2, 'eu', R('Aarhus Hovedbanegard', false), [A('AAR', 'Aarhus', 35)]),
+    P('reykjavik', 'Reykjavik', 'Islande', 'IS', 64.1466, -21.9426, 3, 'islande', null, [A('KEF', 'Keflavik', 50)]),
+    P('birmingham', 'Birmingham', 'Royaume-Uni', 'GB', 52.4862, -1.8904, 3, 'gb', R('Birmingham New Street', true), [A('BHX', 'Birmingham', 25)]),
+    P('glasgow', 'Glasgow', 'Royaume-Uni', 'GB', 55.8642, -4.2518, 3, 'gb', R('Glasgow Central', true), [A('GLA', 'Glasgow', 25)]),
+    P('bristol', 'Bristol', 'Royaume-Uni', 'GB', 51.4545, -2.5879, 2, 'gb', R('Bristol Temple Meads', false), [A('BRS', 'Bristol', 25)]),
+    P('belfast', 'Belfast', 'Royaume-Uni', 'GB', 54.5973, -5.9301, 2, 'ie', R('Belfast Lanyon Place', false), [A('BFS', 'Belfast International', 35)]),
+    P('cork', 'Cork', 'Irlande', 'IE', 51.8985, -8.4756, 2, 'ie', R('Cork Kent', false), [A('ORK', 'Cork', 20)]),
+    P('moscou', 'Moscou', 'Russie', 'RU', 55.7558, 37.6173, 4, 'eu', R('Moskva Leningradski', true), [A('SVO', 'Cheremetievo', 50)]),
+    P('kyiv', 'Kyiv', 'Ukraine', 'UA', 50.4501, 30.5234, 3, 'eu', R('Kyiv-Pasazhyrskyi', false), [A('KBP', 'Boryspil', 45)]),
+    /* --- Afrique et Moyen-Orient --- */
+    P('tanger', 'Tanger', 'Maroc', 'MA', 35.7595, -5.8340, 2, 'af', R('Tanger Ville', true), [A('TNG', 'Tanger-Ibn Battouta', 25)]),
+    P('fes', 'Fes', 'Maroc', 'MA', 34.0181, -5.0078, 2, 'af', R('Fes', false), [A('FEZ', 'Fes-Saiss', 20)]),
+    P('agadir', 'Agadir', 'Maroc', 'MA', 30.4278, -9.5981, 2, 'af', null, [A('AGA', 'Agadir-Al Massira', 30)]),
+    P('oran', 'Oran', 'Algerie', 'DZ', 35.6969, -0.6331, 2, 'af', R('Oran', false), [A('ORN', 'Oran-Ahmed Ben Bella', 25)]),
+    P('charm', 'Charm el-Cheikh', 'Egypte', 'EG', 27.9158, 34.3299, 2, 'af', null, [A('SSH', 'Charm el-Cheikh', 20)]),
+    P('doha', 'Doha', 'Qatar', 'QA', 25.2854, 51.5310, 3, 'asie', null, [A('DOH', 'Hamad', 25)]),
+    P('abudhabi', 'Abu Dhabi', 'Emirats arabes unis', 'AE', 24.4539, 54.3773, 3, 'asie', null, [A('AUH', 'Zayed', 35)]),
+    P('riyad', 'Riyad', 'Arabie saoudite', 'SA', 24.7136, 46.6753, 3, 'asie', R('Riyadh', true), [A('RUH', 'Roi-Khaled', 40)]),
+    P('djeddah', 'Djeddah', 'Arabie saoudite', 'SA', 21.4858, 39.1925, 3, 'asie', R('Jeddah Haramain', true), [A('JED', 'Roi-Abdulaziz', 30)]),
+    P('telaviv', 'Tel Aviv', 'Israel', 'IL', 32.0853, 34.7818, 3, 'asie', R('Tel Aviv Savidor', false), [A('TLV', 'Ben Gourion', 30)]),
+    P('amman', 'Amman', 'Jordanie', 'JO', 31.9454, 35.9284, 2, 'asie', null, [A('AMM', 'Reine-Alia', 40)]),
+    P('beyrouth', 'Beyrouth', 'Liban', 'LB', 33.8938, 35.5018, 2, 'asie', null, [A('BEY', 'Rafic-Hariri', 25)]),
+    P('ankara', 'Ankara', 'Turquie', 'TR', 39.9334, 32.8597, 3, 'eu', R('Ankara Gar', true), [A('ESB', 'Esenboga', 45)]),
+    P('izmir', 'Izmir', 'Turquie', 'TR', 38.4237, 27.1428, 3, 'eu', R('Izmir Basmane', false), [A('ADB', 'Adnan-Menderes', 25)]),
+    P('antalya', 'Antalya', 'Turquie', 'TR', 36.8969, 30.7133, 3, 'eu', null, [A('AYT', 'Antalya', 20)]),
+    P('nairobi', 'Nairobi', 'Kenya', 'KE', -1.2921, 36.8219, 3, 'af', R('Nairobi Terminus', false), [A('NBO', 'Jomo-Kenyatta', 40)]),
+    P('lagos', 'Lagos', 'Nigeria', 'NG', 6.5244, 3.3792, 3, 'af', null, [A('LOS', 'Murtala-Muhammed', 45)]),
+    P('abidjan', 'Abidjan', 'Cote d Ivoire', 'CI', 5.3600, -4.0083, 3, 'af', null, [A('ABJ', 'Felix-Houphouet-Boigny', 25)]),
+    P('accra', 'Accra', 'Ghana', 'GH', 5.6037, -0.1870, 2, 'af', null, [A('ACC', 'Kotoka', 25)]),
+    P('addis', 'Addis-Abeba', 'Ethiopie', 'ET', 9.0320, 38.7469, 3, 'af', null, [A('ADD', 'Bole', 30)]),
+    P('lecap', 'Le Cap', 'Afrique du Sud', 'ZA', -33.9249, 18.4241, 3, 'af', R('Cape Town', false), [A('CPT', 'Le Cap', 30)]),
+    P('maurice', 'Port-Louis', 'Maurice', 'MU', -20.1609, 57.5012, 2, 'maurice', null, [A('MRU', 'Sir-Seewoosagur-Ramgoolam', 50)]),
+    P('reunion', 'Saint-Denis', 'La Reunion', 'RE', -20.8789, 55.4481, 2, 'reunion', null, [A('RUN', 'Roland-Garros', 20)]),
+    P('antananarivo', 'Antananarivo', 'Madagascar', 'MG', -18.8792, 47.5079, 2, 'madagascar', null, [A('TNR', 'Ivato', 30)]),
+    /* --- Asie --- */
+    P('bombay', 'Mumbai', 'Inde', 'IN', 19.0760, 72.8777, 4, 'asie', R('Mumbai Central', false), [A('BOM', 'Chhatrapati-Shivaji', 45)]),
+    P('bangalore', 'Bengaluru', 'Inde', 'IN', 12.9716, 77.5946, 4, 'asie', R('Bengaluru', false), [A('BLR', 'Kempegowda', 60)]),
+    P('colombo', 'Colombo', 'Sri Lanka', 'LK', 6.9271, 79.8612, 2, 'srilanka', R('Colombo Fort', false), [A('CMB', 'Bandaranaike', 45)]),
+    P('katmandou', 'Katmandou', 'Nepal', 'NP', 27.7172, 85.3240, 2, 'asie', null, [A('KTM', 'Tribhuvan', 25)]),
+    P('hanoi', 'Hanoi', 'Vietnam', 'VN', 21.0285, 105.8542, 3, 'asie', R('Ha Noi', false), [A('HAN', 'Noi Bai', 40)]),
+    P('hochiminh', 'Ho Chi Minh-Ville', 'Vietnam', 'VN', 10.8231, 106.6297, 3, 'asie', R('Sai Gon', false), [A('SGN', 'Tan Son Nhat', 30)]),
+    P('phnompenh', 'Phnom Penh', 'Cambodge', 'KH', 11.5564, 104.9282, 2, 'asie', null, [A('PNH', 'Phnom Penh', 25)]),
+    P('kualalumpur', 'Kuala Lumpur', 'Malaisie', 'MY', 3.1390, 101.6869, 4, 'asie', R('KL Sentral', true), [A('KUL', 'Kuala Lumpur', 50)]),
+    P('jakarta', 'Jakarta', 'Indonesie', 'ID', -6.2088, 106.8456, 4, 'java', R('Gambir', true), [A('CGK', 'Soekarno-Hatta', 50)]),
+    P('bali', 'Denpasar', 'Indonesie', 'ID', -8.6705, 115.2126, 3, 'bali', null, [A('DPS', 'Ngurah Rai', 25)]),
+    P('manille', 'Manille', 'Philippines', 'PH', 14.5995, 120.9842, 3, 'luzon', null, [A('MNL', 'Ninoy-Aquino', 40)]),
+    P('taipei', 'Taipei', 'Taiwan', 'TW', 25.0330, 121.5654, 4, 'taiwan', R('Taipei', true), [A('TPE', 'Taoyuan', 45)]),
+    P('hongkong', 'Hong Kong', 'Chine', 'HK', 22.3193, 114.1694, 4, 'asie', R('Hong Kong West Kowloon', true), [A('HKG', 'Hong Kong', 40)]),
+    P('pekin', 'Pekin', 'Chine', 'CN', 39.9042, 116.4074, 5, 'asie', R('Beijing Nan', true), [A('PEK', 'Pekin-Capitale', 50)]),
+    P('canton', 'Canton', 'Chine', 'CN', 23.1291, 113.2644, 4, 'asie', R('Guangzhou Nan', true), [A('CAN', 'Baiyun', 45)]),
+    P('chengdu', 'Chengdu', 'Chine', 'CN', 30.5728, 104.0668, 4, 'asie', R('Chengdu Dong', true), [A('CTU', 'Tianfu', 50)]),
+    P('osaka', 'Osaka', 'Japon', 'JP', 34.6937, 135.5023, 4, 'jp', R('Shin-Osaka', true), [A('KIX', 'Kansai', 60)]),
+    P('fukuoka', 'Fukuoka', 'Japon', 'JP', 33.5904, 130.4017, 3, 'jp', R('Hakata', true), [A('FUK', 'Fukuoka', 20)]),
+    P('sapporo', 'Sapporo', 'Japon', 'JP', 43.0618, 141.3545, 3, 'jp', R('Sapporo', true), [A('CTS', 'New Chitose', 45)]),
+    P('busan', 'Busan', 'Coree du Sud', 'KR', 35.1796, 129.0756, 3, 'asie', R('Busan', true), [A('PUS', 'Gimhae', 30)]),
+    /* --- Oceanie --- */
+    P('melbourne', 'Melbourne', 'Australie', 'AU', -37.8136, 144.9631, 4, 'oceanie', R('Southern Cross', false), [A('MEL', 'Melbourne-Tullamarine', 35)]),
+    P('brisbane', 'Brisbane', 'Australie', 'AU', -27.4698, 153.0251, 3, 'oceanie', R('Brisbane Roma Street', false), [A('BNE', 'Brisbane', 30)]),
+    P('perth', 'Perth', 'Australie', 'AU', -31.9505, 115.8605, 3, 'oceanie', R('Perth', false), [A('PER', 'Perth', 30)]),
+    P('auckland', 'Auckland', 'Nouvelle-Zelande', 'NZ', -36.8485, 174.7633, 3, 'nz', R('Auckland Britomart', false), [A('AKL', 'Auckland', 35)]),
+    /* --- Ameriques --- */
+    P('vancouver', 'Vancouver', 'Canada', 'CA', 49.2827, -123.1207, 4, 'am-n', R('Pacific Central', false), [A('YVR', 'Vancouver', 35)]),
+    P('calgary', 'Calgary', 'Canada', 'CA', 51.0447, -114.0719, 3, 'am-n', null, [A('YYC', 'Calgary', 25)]),
+    P('ottawa', 'Ottawa', 'Canada', 'CA', 45.4215, -75.6972, 3, 'am-n', R('Ottawa', false), [A('YOW', 'Ottawa-Macdonald-Cartier', 25)]),
+    P('quebec', 'Quebec', 'Canada', 'CA', 46.8139, -71.2080, 3, 'am-n', R('Gare du Palais', false), [A('YQB', 'Quebec-Jean-Lesage', 25)]),
+    P('chicago', 'Chicago', 'Etats-Unis', 'US', 41.8781, -87.6298, 4, 'am-n', R('Chicago Union Station', false), [A('ORD', 'O Hare', 45)]),
+    P('boston', 'Boston', 'Etats-Unis', 'US', 42.3601, -71.0589, 4, 'am-n', R('Boston South Station', false), [A('BOS', 'Logan', 25)]),
+    P('washington', 'Washington', 'Etats-Unis', 'US', 38.9072, -77.0369, 4, 'am-n', R('Washington Union Station', false), [A('IAD', 'Dulles', 50), A('DCA', 'Reagan National', 25)]),
+    P('atlanta', 'Atlanta', 'Etats-Unis', 'US', 33.7490, -84.3880, 4, 'am-n', null, [A('ATL', 'Hartsfield-Jackson', 30)]),
+    P('dallas', 'Dallas', 'Etats-Unis', 'US', 32.7767, -96.7970, 4, 'am-n', null, [A('DFW', 'Dallas-Fort Worth', 35)]),
+    P('houston', 'Houston', 'Etats-Unis', 'US', 29.7604, -95.3698, 4, 'am-n', null, [A('IAH', 'George-Bush', 40)]),
+    P('denver', 'Denver', 'Etats-Unis', 'US', 39.7392, -104.9903, 3, 'am-n', null, [A('DEN', 'Denver', 45)]),
+    P('seattle', 'Seattle', 'Etats-Unis', 'US', 47.6062, -122.3321, 4, 'am-n', R('King Street Station', false), [A('SEA', 'Seattle-Tacoma', 35)]),
+    P('lasvegas', 'Las Vegas', 'Etats-Unis', 'US', 36.1699, -115.1398, 3, 'am-n', null, [A('LAS', 'Harry-Reid', 20)]),
+    P('orlando', 'Orlando', 'Etats-Unis', 'US', 28.5383, -81.3792, 3, 'am-n', null, [A('MCO', 'Orlando', 30)]),
+    P('cancun', 'Cancun', 'Mexique', 'MX', 21.1619, -86.8515, 3, 'am-n', null, [A('CUN', 'Cancun', 30)]),
+    P('havane', 'La Havane', 'Cuba', 'CU', 23.1136, -82.3666, 2, 'cuba', null, [A('HAV', 'Jose-Marti', 35)]),
+    P('puntacana', 'Punta Cana', 'Republique dominicaine', 'DO', 18.5601, -68.3725, 2, 'hispaniola', null, [A('PUJ', 'Punta Cana', 25)]),
+    P('panama', 'Panama', 'Panama', 'PA', 8.9824, -79.5199, 3, 'am-c', null, [A('PTY', 'Tocumen', 35)]),
+    P('bogota', 'Bogota', 'Colombie', 'CO', 4.7110, -74.0721, 4, 'am-s', null, [A('BOG', 'El Dorado', 45)]),
+    P('lima', 'Lima', 'Perou', 'PE', -12.0464, -77.0428, 4, 'am-s', null, [A('LIM', 'Jorge-Chavez', 40)]),
+    P('santiagochili', 'Santiago', 'Chili', 'CL', -33.4489, -70.6693, 4, 'am-s', R('Estacion Central', false), [A('SCL', 'Arturo-Merino-Benitez', 35)]),
+    P('rio', 'Rio de Janeiro', 'Bresil', 'BR', -22.9068, -43.1729, 4, 'am-s', null, [A('GIG', 'Galeao', 45)]),
+    P('montevideo', 'Montevideo', 'Uruguay', 'UY', -34.9011, -56.1645, 2, 'am-s', null, [A('MVD', 'Carrasco', 30)])
   ];
+
+  /* --- gares supplementaires ------------------------------------------------
+     Gares parisiennes, gares nouvelles a l'ecart des centres (Aix TGV, Lyon
+     Saint-Exupery, Avignon TGV...) et secondes gares des grandes villes. Le
+     moteur retient pour chaque relation la gare la mieux adaptee au service. */
+  T.EXTRA_STATIONS = {
+    paris: [
+      S('Paris Gare de Lyon', 48.8443, 2.3744, true, 18, ['se', 'CH', 'IT', 'ES', 'MC']),
+      S('Paris Gare du Nord', 48.8809, 2.3553, true, 16, ['nord', 'GB', 'BE', 'NL']),
+      S('Paris Montparnasse', 48.8414, 2.3200, true, 18, ['ouest', 'at']),
+      S('Paris Gare de l Est', 48.8768, 2.3592, true, 17, ['est', 'DE', 'LU', 'AT', 'CZ', 'PL', 'HU']),
+      S('Paris Austerlitz', 48.8422, 2.3654, false, 18, ['at']),
+      S('Paris Saint-Lazare', 48.8757, 2.3253, false, 15, ['ouest']),
+      S('Paris Bercy', 48.8395, 2.3822, false, 20, ['se']),
+      S('Marne-la-Vallee Chessy TGV', 48.8697, 2.7828, true, 45),
+      S('Aeroport CDG 2 TGV', 49.0044, 2.5711, true, 50),
+      S('Massy TGV', 48.7256, 2.2611, true, 35)
+    ],
+    lyon: [
+      S('Lyon Part-Dieu', 45.7605, 4.8595, true, 12),
+      S('Lyon Perrache', 45.7492, 4.8261, false, 15),
+      S('Lyon Saint-Exupery TGV', 45.7207, 5.0757, true, 40)
+    ],
+    marseille: [S('Marseille Saint-Charles', 43.3025, 5.3806, true, 12)],
+    avignon: [
+      S('Avignon TGV', 43.9214, 4.7861, true, 20),
+      S('Avignon Centre', 43.9425, 4.8033, false, 10)
+    ],
+    nimes: [
+      S('Nimes Pont-du-Gard', 43.7897, 4.3931, true, 22),
+      S('Nimes Centre', 43.8322, 4.3653, false, 10)
+    ],
+    montpellier: [
+      S('Montpellier Saint-Roch', 43.6047, 3.8803, true, 10),
+      S('Montpellier Sud de France', 43.5800, 3.9264, true, 25)
+    ],
+    valencefr: [
+      S('Valence TGV', 44.9917, 4.9783, true, 20),
+      S('Valence Ville', 44.9264, 4.8944, false, 10)
+    ],
+    aix: [
+      S('Aix-en-Provence TGV', 43.4553, 5.3172, true, 20),
+      S('Aix-en-Provence Centre', 43.5253, 5.4453, false, 10)
+    ],
+    tours: [
+      S('Saint-Pierre-des-Corps', 47.3872, 0.7169, true, 15),
+      S('Tours Centre', 47.3897, 0.6939, false, 8)
+    ],
+    lille: [
+      S('Lille Europe', 50.6394, 3.0758, true, 12),
+      S('Lille Flandres', 50.6367, 3.0703, false, 10)
+    ],
+    reims: [
+      S('Reims Centre', 49.2586, 4.0247, false, 10),
+      S('Champagne-Ardenne TGV', 49.2153, 4.0139, true, 18)
+    ],
+    metz: [
+      S('Metz-Ville', 49.1097, 6.1775, false, 10),
+      S('Lorraine TGV', 48.9472, 6.1694, true, 30)
+    ],
+    besancon: [
+      S('Besancon Viotte', 47.2472, 6.0219, false, 10),
+      S('Besancon Franche-Comte TGV', 47.3078, 5.9556, true, 20)
+    ],
+    poitiers: [S('Poitiers', 46.5817, 0.3331, true, 10)],
+    lemans: [S('Le Mans', 48.0069, 0.1925, true, 10)],
+    londres: [
+      S('London St Pancras International', 51.5320, -0.1264, true, 20, ['FR', 'BE', 'NL', 'DE']),
+      S('London Euston', 51.5282, -0.1337, true, 20, ['gb-ouest']),
+      S('London King s Cross', 51.5308, -0.1238, true, 20, ['gb-est']),
+      S('London Paddington', 51.5154, -0.1755, true, 22, ['gb-sudouest'])
+    ],
+    bruxelles: [
+      S('Bruxelles-Midi', 50.8358, 4.3358, true, 15),
+      S('Bruxelles-Central', 50.8456, 4.3572, false, 12)
+    ],
+    berlin: [
+      S('Berlin Hauptbahnhof', 52.5250, 13.3694, true, 15),
+      S('Berlin Sudkreuz', 52.4756, 13.3653, true, 20)
+    ],
+    munich: [S('Munchen Hauptbahnhof', 48.1403, 11.5583, true, 12)],
+    francfort: [
+      S('Frankfurt Hauptbahnhof', 50.1069, 8.6636, true, 12),
+      S('Frankfurt Flughafen Fernbahnhof', 50.0530, 8.5706, true, 25)
+    ],
+    milan: [
+      S('Milano Centrale', 45.4869, 9.2039, true, 12),
+      S('Milano Porta Garibaldi', 45.4847, 9.1878, true, 12)
+    ],
+    rome: [
+      S('Roma Termini', 41.9011, 12.5019, true, 12),
+      S('Roma Tiburtina', 41.9106, 12.5303, true, 18)
+    ],
+    madrid: [
+      S('Madrid Puerta de Atocha', 40.4067, -3.6906, true, 15),
+      S('Madrid Chamartin', 40.4722, -3.6822, true, 20)
+    ],
+    barcelone: [
+      S('Barcelona Sants', 41.3792, 2.1400, true, 12),
+      S('Barcelona La Sagrera', 41.4200, 2.1900, true, 18)
+    ],
+    zurich: [S('Zurich Hauptbahnhof', 47.3779, 8.5403, true, 10)],
+    amsterdam: [
+      S('Amsterdam Centraal', 52.3789, 4.9003, true, 12),
+      S('Amsterdam Zuid', 52.3389, 4.8731, true, 18)
+    ],
+    naples: [S('Napoli Centrale', 40.8522, 14.2725, true, 12)],
+    turin: [
+      S('Torino Porta Nuova', 45.0619, 7.6783, true, 10),
+      S('Torino Porta Susa', 45.0725, 7.6656, true, 12)
+    ],
+    tokyo: [
+      S('Tokyo', 35.6812, 139.7671, true, 20),
+      S('Shinagawa', 35.6285, 139.7387, true, 20)
+    ],
+    shanghai: [
+      S('Shanghai Hongqiao', 31.1944, 121.3200, true, 40),
+      S('Shanghai', 31.2497, 121.4550, true, 15)
+    ],
+    newyork: [S('New York Penn Station', 40.7506, -73.9936, false, 20)],
+    casablanca: [S('Casa-Voyageurs', 33.5892, -7.5806, true, 15)],
+    tanger: [S('Tanger Ville', 35.7686, -5.7997, true, 15)]
+  };
 
   /* --- axes ferroviaires --------------------------------------------------
      Les reseaux francais et espagnol sont en etoile : une relation est rapide
@@ -160,7 +425,11 @@
     nantes: 'ouest', angers: 'ouest', rennes: 'ouest', brest: 'ouest',
     caen: 'ouest', rouen: 'ouest', lehavre: 'ouest', orleans: 'ouest',
     lille: 'nord', reims: 'est', metz: 'est', nancy: 'est', strasbourg: 'est',
-    mulhouse: 'est',
+    mulhouse: 'est', calais: 'nord', amiens: 'nord',
+    aix: 'se', valencefr: 'se', poitiers: 'at', lemans: 'ouest', lorient: 'ouest',
+    /* Royaume-Uni : les grandes radiales au depart de Londres */
+    manchester: 'gb-ouest', glasgow: 'gb-ouest', birmingham: 'gb-ouest',
+    edimbourg: 'gb-est', bristol: 'gb-sudouest',
     /* Espagne */
     barcelone: 'es-ne', valencia: 'es-e', seville: 'es-sud', malaga: 'es-sud',
     bilbao: 'es-nord'
@@ -174,7 +443,15 @@
     { a: 'gb', b: 'ie', car: { extraMin: 220, extraCost: 130, label: 'Ferry Holyhead - Dublin' }, rail: false },
     { a: 'eu', b: 'corse', car: { extraMin: 660, extraCost: 190, label: 'Ferry vers la Corse' }, rail: false },
     { a: 'eu', b: 'baleares', car: { extraMin: 480, extraCost: 175, label: 'Ferry vers les Baleares' }, rail: false },
-    { a: 'eu', b: 'fi', car: { extraMin: 150, extraCost: 90, label: 'Ferry Stockholm - Helsinki' }, rail: false }
+    { a: 'eu', b: 'fi', car: { extraMin: 150, extraCost: 90, label: 'Ferry Stockholm - Helsinki' }, rail: false },
+    { a: 'eu', b: 'sicile', car: { extraMin: 60, extraCost: 55, label: 'Ferry de Messine' }, rail: true },
+    { a: 'eu', b: 'sardaigne', car: { extraMin: 420, extraCost: 160, label: 'Ferry vers la Sardaigne' }, rail: false },
+    { a: 'eu', b: 'malte', car: { extraMin: 300, extraCost: 130, label: 'Ferry vers Malte' }, rail: false },
+    { a: 'eu', b: 'crete', car: { extraMin: 540, extraCost: 120, label: 'Ferry vers la Crete' }, rail: false },
+    { a: 'eu', b: 'ibiza', car: { extraMin: 360, extraCost: 150, label: 'Ferry vers Ibiza' }, rail: false },
+    { a: 'canaries', b: 'canaries-o', car: { extraMin: 150, extraCost: 60, label: 'Ferry inter-iles' }, rail: false },
+    { a: 'am-n', b: 'am-c', car: { extraMin: 0, extraCost: 0, label: 'Route continue' }, rail: false },
+    { a: 'java', b: 'bali', car: { extraMin: 90, extraCost: 25, label: 'Ferry Java - Bali' }, rail: false }
   ];
 
   /* --- operateurs ferroviaires ---------------------------------------------

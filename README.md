@@ -31,12 +31,22 @@ devient une étape et les modes sont présélectionnés.
 ## Le reste
 
 - **Aller-retour** : date et heure de retour optionnelles, avec un total cumulé.
-- **Choix du point d'embarquement** : taper une ville propose son centre, sa gare
-  et ses aéroports ; les temps d'accès s'ajustent selon ce que l'on retient. Les
-  résultats de rue ne sont interrogés que si la saisie ressemble à une adresse.
-- **Carte** : tracé schématique de l'itinéraire retenu sous le formulaire, un
-  trait par segment à la couleur de son mode, les villes du référentiel en
-  repères géographiques.
+- **Choix du point d'embarquement** : taper une ville propose son centre, ses
+  gares et ses aéroports ; on peut aussi chercher une gare par son nom
+  (« Saint-Exupéry », « Aix TGV »). Les temps d'accès s'ajustent selon ce que
+  l'on retient. Les résultats de rue ne sont interrogés que si la saisie
+  ressemble à une adresse.
+- **Déroulé du trajet** : sous chaque segment, le porte-à-porte est détaillé
+  étape par étape avec ses horaires — rejoindre la gare, enregistrement, vol,
+  débarquement, rejoindre le centre — pour que la durée annoncée soit lisible.
+- **Gares multiples** : une ville expose toutes ses gares, y compris les gares
+  nouvelles à l'écart des centres (Aix-en-Provence TGV, Lyon Saint-Exupéry,
+  Avignon TGV, Champagne-Ardenne...). Le moteur choisit celle qui convient au
+  service et à la direction, et compte le temps d'accès réel.
+- **Carte** : affichée dès la saisie, sous le formulaire. Un trait par segment à
+  la couleur de son mode ; pour la route, le tracé réel mesuré par OSRM quand il
+  est disponible, sinon un tracé schématique. Les villes du référentiel servent
+  de repères géographiques.
 - **Hypothèses ajustables** : motorisation et consommation, prix du carburant ou
   de la recharge, péages, usure, nombre d'occupants du véhicule, classe et carte
   de réduction ferroviaire, temps d'enregistrement et bagage en soute.
@@ -45,17 +55,23 @@ devient une étape et les modes sont présélectionnés.
 
 | Donnée | Source |
 | --- | --- |
-| Distance et durée routières | **OSRM** sur le graphe OpenStreetMap, points de passage respectés |
+| Tracé, distance et durée routiers | **OSRM** sur le graphe OpenStreetMap, points de passage respectés |
 | Localisation d'un lieu absent du référentiel | **Nominatim** (OpenStreetMap) |
+| Horaires ferroviaires, et prix quand le service les donne | **v6.db.transport.rest**, passerelle ouverte vers le système horaire de la Deutsche Bahn |
 | Référentiel des villes, gares et aéroports | embarqué dans `assets/data.js` |
-| Horaires et prix ferroviaires et aériens | **estimés** par le modèle de `assets/engine.js` |
+| Horaires et prix aériens, tarifs ferroviaires non communiqués | **estimés** par le modèle de `assets/engine.js` |
 
-Aucun distributeur ne publie librement ses tarifs et ses horaires. Les prix et
-les départs affichés sont donc reconstitués à partir de la distance, de la
-vitesse commerciale du corridor, de la grille tarifaire de l'opérateur, du délai
-avant le départ, du jour, de l'heure et de la saison. Ce sont des ordres de
-grandeur destinés à la comparaison, **pas des offres réservables**. Chaque
-résultat indique s'il est mesuré ou estimé.
+Les horaires et tarifs aériens ne sont accessibles qu'aux distributeurs sous
+contrat : aucune source libre ne les publie. Ils restent donc reconstitués à
+partir de la distance, de la vitesse commerciale, de la grille tarifaire de
+l'opérateur, du délai avant le départ, du jour, de l'heure et de la saison — des
+ordres de grandeur destinés à la comparaison, **pas des offres réservables**.
+Chaque ligne de résultat porte son origine, et un bandeau indique par segment si
+la recherche d'horaires réels a abouti.
+
+Pour aller plus loin sur l'aérien, il faudrait une clé d'API chez un
+distributeur (Amadeus Self-Service, Kiwi, Duffel). Le code est structuré pour
+qu'un tel fournisseur s'ajoute à côté des autres dans `assets/providers.js`.
 
 Les deux services en ligne sont interrogés depuis le navigateur, sans clé d'API.
 S'ils sont indisponibles, le calcul bascule sur le modèle interne et l'interface
@@ -138,10 +154,13 @@ dist/travia.html    version autonome en un seul fichier
 
 - Les prix ne sont pas ceux des distributeurs et ne permettent pas de réserver.
 - Les relations courtes sur lignes classiques sont sous-estimées en durée.
-- Le référentiel couvre 110 villes ; ailleurs, l'outil rattache le point à la
+- Le référentiel couvre 237 villes dans 81 pays ; ailleurs, l'outil rattache le point à la
   gare et à l'aéroport les plus proches et ajoute le temps d'accès routier.
-- La carte est un schéma, pas un fond de carte : le tracé routier ne suit pas le
-  détail de la route.
+- La carte n'a pas de fond cartographique : hors tracé routier mesuré, les
+  segments sont schématiques.
+- Les horaires réels ne sont cherchés que pour le train, et uniquement dans le
+  comparateur : la vue « meilleur itinéraire » évalue des centaines de
+  combinaisons et reste sur le modèle.
 - Un segment en voiture au milieu d'un trajet mixte suppose un véhicule
   disponible sur place ; ce coût n'est pas compté.
 - Les émissions aériennes ne comprennent pas les effets non-CO₂ de l'aviation.

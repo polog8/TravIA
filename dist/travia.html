@@ -261,6 +261,9 @@ a:hover { text-decoration-color: currentColor; }
 .map-route--car { stroke: var(--car); }
 .map-route--train { stroke: var(--train); }
 .map-route--plane { stroke: var(--plane); stroke-dasharray: 5 4; }
+.map-route--pending { stroke: var(--rule-strong); stroke-dasharray: 3 4; }
+.map__key--pending { color: var(--ink-faint); }
+.map__key--pending .map__swatch { border-top-style: dashed; }
 .map-stop { fill: var(--ink); stroke: var(--surface-alt); stroke-width: 1.5; }
 .map-stop--end { fill: var(--accent); }
 .map-label {
@@ -362,6 +365,18 @@ a:hover { text-decoration-color: currentColor; }
 .badge--live { border-color: var(--train); color: var(--train); }
 .badge--model { border-color: var(--rule-strong); }
 
+.rail-status-bar { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: -8px 0 18px; }
+.rail-status { font-size: 12px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
+.rail-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--rule-strong); flex: none; }
+.rail-status--ok::before { background: var(--train); }
+.rail-status--ko::before { background: var(--alert); }
+.src-tag {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--train); border: 1px solid var(--train); border-radius: var(--radius);
+  padding: 0 4px; margin-left: 6px; white-space: nowrap;
+}
+.src-tag--model { color: var(--ink-faint); border-color: var(--rule-strong); }
+
 table.grid { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); border: 1px solid var(--rule); }
 table.grid th, table.grid td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
 table.grid thead th { font: 600 11px/1.3 var(--sans); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-soft); background: var(--surface-alt); }
@@ -428,6 +443,32 @@ tr.picked { background: var(--accent-wash); }
 
 .more { margin-top: 12px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* deroule du trajet */
+.tl { margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.tl__head {
+  font-family: var(--sans); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-soft); display: flex; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin-bottom: 12px; font-weight: 600;
+}
+.tl__head span { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink-faint); font-size: 12px; }
+.tl__list { list-style: none; margin: 0; padding: 0; }
+.tl__row { display: grid; grid-template-columns: 46px 14px minmax(0, 1fr); gap: 0 10px; align-items: start; }
+.tl__time { font: 12.5px/1.5 var(--mono); color: var(--ink-soft); padding-top: 1px; }
+.tl__mark { position: relative; align-self: stretch; }
+.tl__mark::before {
+  content: ""; position: absolute; left: 50%; top: 6px; width: 7px; height: 7px;
+  margin-left: -3.5px; border-radius: 50%; background: var(--surface);
+  border: 1.5px solid var(--rule-strong);
+}
+.tl__mark::after { content: ""; position: absolute; left: 50%; top: 13px; bottom: -4px; width: 1px; margin-left: -0.5px; background: var(--rule); }
+.tl__row:last-child .tl__mark::after { display: none; }
+.tl__row--ride .tl__mark::before { background: var(--accent); border-color: var(--accent); }
+.tl__row--end .tl__mark::before { background: var(--ink); border-color: var(--ink); }
+.tl__body { padding-bottom: 14px; font-size: 13.5px; min-width: 0; }
+.tl__body b { font-weight: 600; display: block; }
+.tl__body span { display: block; color: var(--ink-soft); font-size: 12.5px; }
+.opt__detail .tl { border-top: 0; padding-top: 6px; }
+
 .breakdown { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; color: var(--ink-soft); display: grid; gap: 4px; max-width: 420px; }
 .breakdown li { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--rule); padding-bottom: 3px; }
 .breakdown li strong { font-weight: 600; color: var(--ink); }
@@ -566,12 +607,15 @@ tr.picked { background: var(--accent-wash); }
           <input type="number" id="kwhPrice" step="0.01" min="0.05" max="1" value="0.32">
         </label>
         <label class="field">
-          <span class="field__label">Personnes dans le vehicule</span>
-          <input type="number" id="occupants" min="1" max="9" value="1">
+          <span class="field__label">Peages</span>
+          <select id="tollProfile">
+            <option value="oui">Inclus</option>
+            <option value="non">Eviter les peages</option>
+          </select>
         </label>
       </div>
-      <label class="check"><input type="checkbox" id="tolls" checked> Inclure les peages</label>
       <label class="check"><input type="checkbox" id="includeWear"> Inclure l'usure et l'entretien (0,06 EUR/km)</label>
+      <p class="rsection__note">Les frais du vehicule sont partages entre les voyageurs indiques plus haut.</p>
     </details>
 
     <details class="opts">
@@ -611,6 +655,7 @@ tr.picked { background: var(--accent-wash); }
     </details>
 
     <label class="check check--live"><input type="checkbox" id="useLive" checked> Interroger OpenStreetMap et OSRM pour les distances routieres reelles</label>
+    <label class="check"><input type="checkbox" id="liveRail" checked> Chercher les horaires ferroviaires reels (service ouvert Deutsche Bahn)</label>
 
     <button type="submit" class="btn btn--primary btn--wide" id="compute">Comparer les trajets</button>
     <p class="form-note" id="formNote"></p>
@@ -656,16 +701,20 @@ tr.picked { background: var(--accent-wash); }
   <h2>Methode et sources</h2>
   <div class="method__grid">
     <div>
+      <h3>Gares et aeroports</h3>
+      <p>Une ville expose ses gares et ses aeroports : gares parisiennes, gares nouvelles a l'ecart des centres comme Aix-en-Provence TGV ou Lyon Saint-Exupery, aeroports principaux et secondaires. Le moteur retient la gare adaptee au service et a la direction — un train pour le sud-est part de la gare de Lyon, pas de la gare du Nord — et compte le temps d'acces correspondant. On peut aussi imposer un point d'embarquement en le choisissant dans la liste.</p>
+    </div>
+    <div>
       <h3>Les deux vues</h3>
       <p>Le <strong>comparateur</strong> impose l'itineraire que vous decrivez et met les trois modes en regard, segment par segment. La vue <strong>meilleur itineraire</strong> ne presuppose rien : elle teste chaque mode, puis l'insertion d'un point de correspondance intermediaire, et classe les combinaisons obtenues par duree, par prix ou par emissions.</p>
     </div>
     <div>
       <h3>Ce qui est mesure</h3>
-      <p>Lorsque la connexion aux services ouverts est active, les distances et les durees routieres proviennent d'<strong>OSRM</strong>, calculees sur le graphe OpenStreetMap en respectant l'ordre des points de passage. Les lieux absents du referentiel sont localises par <strong>Nominatim</strong>. En cas d'indisponibilite, le calcul bascule sur le modele interne et le resultat est signale comme estime.</p>
+      <p>Le trace, la distance et la duree routiers viennent d'<strong>OSRM</strong>, calcules sur le graphe OpenStreetMap en respectant l'ordre des points de passage ; la carte affiche la trace reelle. Les lieux absents du referentiel sont localises par <strong>Nominatim</strong>. Les <strong>horaires ferroviaires</strong> sont recherches aupres du service ouvert <strong>v6.db.transport.rest</strong>, passerelle publique vers le systeme horaire de la Deutsche Bahn, qui couvre une grande partie des reseaux europeens ; les offres obtenues portent la mention <em>horaire reel</em>, et le prix lorsqu'il est communique.</p>
     </div>
     <div>
-      <h3>Ce qui est estime</h3>
-      <p>Aucun distributeur ne publie librement ses tarifs ni ses horaires. Les prix et les horaires ferroviaires et aeriens sont donc <strong>reconstitues par un modele</strong> : distance, vitesse commerciale du corridor, grille tarifaire de l'operateur, delai avant le depart, jour, heure et saison. Ce sont des ordres de grandeur destines a la comparaison, pas des offres reservables.</p>
+      <h3>Ce qui reste estime</h3>
+      <p>Les <strong>horaires et tarifs aeriens</strong> ne sont accessibles qu'aux distributeurs sous contrat : aucune source libre ne les publie. Ils restent donc reconstitues par le modele, comme les tarifs ferroviaires que le service ouvert ne renvoie pas, et comme l'ensemble des horaires quand ce service est injoignable. Chaque ligne indique son origine. La vue <em>meilleur itineraire</em> travaille sur le modele seul, car elle evalue des centaines de combinaisons.</p>
     </div>
     <div>
       <h3>Calage du modele</h3>
@@ -673,7 +722,7 @@ tr.picked { background: var(--accent-wash); }
     </div>
     <div>
       <h3>Carte</h3>
-      <p>La carte est un <strong>trace schematique</strong> : elle situe les points de l'itineraire et la couleur de chaque segment, en s'appuyant sur les villes du referentiel comme reperes. Ce n'est pas un fond de carte, et le trace routier n'est pas le detail de la route suivie.</p>
+      <p>La carte est affichee des la saisie et suit l'itineraire retenu, un trait par segment a la couleur de son mode. Pour la route, elle trace le <strong>parcours reel mesure</strong> quand OSRM a repondu ; sinon un trace schematique passant par les villes du referentiel, qui servent aussi de reperes geographiques. Il n'y a pas de fond de carte : la page reste autonome.</p>
     </div>
     <div>
       <h3>Emissions</h3>
@@ -704,8 +753,17 @@ window.TravIA = { STANDALONE: true };
   function A(iata, name, transferMin, kind) {
     return { iata: iata, name: name, transferMin: transferMin, kind: kind || 'main' };
   }
+  /* Gare : nom, coordonnees (nulles = celles de la ville), aptitude a la
+     grande vitesse, temps d'acces depuis le centre en minutes. */
+  function S(name, lat, lon, hsr, accessMin, serves) {
+    return {
+      name: name, lat: lat, lon: lon, hsr: !!hsr,
+      accessMin: accessMin == null ? 15 : accessMin,
+      serves: serves || null
+    };
+  }
   function R(station, hsr) {
-    return { station: station, hsr: !!hsr };
+    return [S(station, null, null, hsr, 15)];
   }
   function P(id, name, country, cc, lat, lon, weight, land, rail, air) {
     return {
@@ -834,8 +892,264 @@ window.TravIA = { STANDALONE: true };
     P('shanghai', 'Shanghai', 'Chine', 'CN', 31.2304, 121.4737, 4, 'asie', R('Shanghai Hongqiao', true), [A('PVG', 'Shanghai-Pudong', 55)]),
     P('tokyo', 'Tokyo', 'Japon', 'JP', 35.6762, 139.6503, 5, 'jp', R('Tokyo', true), [A('HND', 'Haneda', 35), A('NRT', 'Narita', 75)]),
     P('seoul', 'Seoul', 'Coree du Sud', 'KR', 37.5665, 126.9780, 4, 'asie', R('Seoul', true), [A('ICN', 'Incheon', 60)]),
-    P('sydney', 'Sydney', 'Australie', 'AU', -33.8688, 151.2093, 4, 'oceanie', null, [A('SYD', 'Sydney-Kingsford Smith', 30)])
+    P('sydney', 'Sydney', 'Australie', 'AU', -33.8688, 151.2093, 4, 'oceanie', null, [A('SYD', 'Sydney-Kingsford Smith', 30)]),
+/* --- France : villes et gares nouvelles --- */
+    P('aix', 'Aix-en-Provence', 'France', 'FR', 43.5297, 5.4474, 3, 'eu', R('Aix-en-Provence Centre', false), []),
+    P('valencefr', 'Valence', 'France', 'FR', 44.9333, 4.8917, 2, 'eu', R('Valence Ville', false), []),
+    P('poitiers', 'Poitiers', 'France', 'FR', 46.5802, 0.3404, 2, 'eu', R('Poitiers', true), []),
+    P('lemans', 'Le Mans', 'France', 'FR', 48.0061, 0.1996, 2, 'eu', R('Le Mans', true), []),
+    P('lorient', 'Lorient', 'France', 'FR', 47.7483, -3.3702, 2, 'eu', R('Lorient', false), [A('LRT', 'Lorient-Bretagne Sud', 20)]),
+    P('calais', 'Calais', 'France', 'FR', 50.9513, 1.8587, 2, 'eu', R('Calais-Frethun', true), []),
+    P('amiens', 'Amiens', 'France', 'FR', 49.8941, 2.2958, 2, 'eu', R('Amiens', false), []),
+    P('bastia', 'Bastia', 'France', 'FR', 42.7028, 9.4503, 2, 'corse', R('Bastia', false), [A('BIA', 'Bastia-Poretta', 25)]),
+    /* --- Europe --- */
+    P('lausanne', 'Lausanne', 'Suisse', 'CH', 46.5197, 6.6323, 2, 'eu', R('Lausanne', false), []),
+    P('salzbourg', 'Salzbourg', 'Autriche', 'AT', 47.8095, 13.0550, 2, 'eu', R('Salzburg Hauptbahnhof', true), [A('SZG', 'Salzbourg-Mozart', 20)]),
+    P('innsbruck', 'Innsbruck', 'Autriche', 'AT', 47.2692, 11.4041, 2, 'eu', R('Innsbruck Hauptbahnhof', true), [A('INN', 'Innsbruck', 15)]),
+    P('graz', 'Graz', 'Autriche', 'AT', 47.0707, 15.4395, 2, 'eu', R('Graz Hauptbahnhof', false), [A('GRZ', 'Graz', 20)]),
+    P('genes', 'Genes', 'Italie', 'IT', 44.4056, 8.9463, 3, 'eu', R('Genova Piazza Principe', false), [A('GOA', 'Genes-Cristoforo Colombo', 20)]),
+    P('verone', 'Verone', 'Italie', 'IT', 45.4384, 10.9916, 2, 'eu', R('Verona Porta Nuova', true), [A('VRN', 'Verone-Villafranca', 25)]),
+    P('pise', 'Pise', 'Italie', 'IT', 43.7228, 10.4017, 2, 'eu', R('Pisa Centrale', false), [A('PSA', 'Pise-Galilee', 15)]),
+    P('palerme', 'Palerme', 'Italie', 'IT', 38.1157, 13.3615, 3, 'sicile', R('Palermo Centrale', false), [A('PMO', 'Palerme-Punta Raisi', 45)]),
+    P('catane', 'Catane', 'Italie', 'IT', 37.5079, 15.0830, 3, 'sicile', R('Catania Centrale', false), [A('CTA', 'Catane-Fontanarossa', 20)]),
+    P('bari', 'Bari', 'Italie', 'IT', 41.1171, 16.8719, 3, 'eu', R('Bari Centrale', true), [A('BRI', 'Bari-Palese', 25)]),
+    P('cagliari', 'Cagliari', 'Italie', 'IT', 39.2238, 9.1217, 2, 'sardaigne', R('Cagliari', false), [A('CAG', 'Cagliari-Elmas', 20)]),
+    P('alicante', 'Alicante', 'Espagne', 'ES', 38.3452, -0.4810, 3, 'eu', R('Alicante Terminal', true), [A('ALC', 'Alicante-Elche', 25)]),
+    P('saragosse', 'Saragosse', 'Espagne', 'ES', 41.6488, -0.8891, 3, 'eu', R('Zaragoza Delicias', true), [A('ZAZ', 'Saragosse', 25)]),
+    P('grenade', 'Grenade', 'Espagne', 'ES', 37.1773, -3.5986, 2, 'eu', R('Granada', true), [A('GRX', 'Grenade-Jaen', 25)]),
+    P('faro', 'Faro', 'Portugal', 'PT', 37.0194, -7.9304, 2, 'eu', R('Faro', false), [A('FAO', 'Faro', 15)]),
+    P('funchal', 'Funchal', 'Portugal', 'PT', 32.6669, -16.9241, 2, 'madere', null, [A('FNC', 'Madere-Cristiano Ronaldo', 30)]),
+    P('laspalmas', 'Las Palmas', 'Espagne', 'ES', 28.1235, -15.4363, 3, 'canaries', null, [A('LPA', 'Gran Canaria', 30)]),
+    P('tenerife', 'Tenerife', 'Espagne', 'ES', 28.4636, -16.2518, 3, 'canaries-o', null, [A('TFS', 'Tenerife-Sud', 45)]),
+    P('ibiza', 'Ibiza', 'Espagne', 'ES', 38.9067, 1.4206, 2, 'ibiza', null, [A('IBZ', 'Ibiza', 20)]),
+    P('malte', 'La Valette', 'Malte', 'MT', 35.8989, 14.5146, 2, 'malte', null, [A('MLA', 'Malte-Luqa', 25)]),
+    P('larnaca', 'Larnaca', 'Chypre', 'CY', 34.9182, 33.6201, 2, 'chypre', null, [A('LCA', 'Larnaca', 20)]),
+    P('heraklion', 'Heraklion', 'Grece', 'GR', 35.3387, 25.1442, 2, 'crete', null, [A('HER', 'Heraklion-Kazantzakis', 20)]),
+    P('thessalonique', 'Thessalonique', 'Grece', 'GR', 40.6401, 22.9444, 3, 'eu', R('Thessaloniki', false), [A('SKG', 'Thessalonique-Macedoine', 30)]),
+    P('cluj', 'Cluj-Napoca', 'Roumanie', 'RO', 46.7712, 23.6236, 2, 'eu', R('Cluj-Napoca', false), [A('CLJ', 'Cluj-Avram Iancu', 20)]),
+    P('timisoara', 'Timisoara', 'Roumanie', 'RO', 45.7489, 21.2087, 2, 'eu', R('Timisoara Nord', false), [A('TSR', 'Timisoara-Traian Vuia', 20)]),
+    P('sarajevo', 'Sarajevo', 'Bosnie-Herzegovine', 'BA', 43.8563, 18.4131, 2, 'eu', R('Sarajevo', false), [A('SJJ', 'Sarajevo', 20)]),
+    P('split', 'Split', 'Croatie', 'HR', 43.5081, 16.4402, 2, 'eu', R('Split', false), [A('SPU', 'Split', 30)]),
+    P('dubrovnik', 'Dubrovnik', 'Croatie', 'HR', 42.6507, 18.0944, 2, 'eu', null, [A('DBV', 'Dubrovnik', 30)]),
+    P('bratislava', 'Bratislava', 'Slovaquie', 'SK', 48.1486, 17.1077, 2, 'eu', R('Bratislava hlavna stanica', false), [A('BTS', 'Bratislava', 20)]),
+    P('brno', 'Brno', 'Republique tcheque', 'CZ', 49.1951, 16.6068, 2, 'eu', R('Brno hlavni nadrazi', false), [A('BRQ', 'Brno-Turany', 20)]),
+    P('gdansk', 'Gdansk', 'Pologne', 'PL', 54.3520, 18.6466, 2, 'eu', R('Gdansk Glowny', true), [A('GDN', 'Gdansk-Lech Walesa', 25)]),
+    P('wroclaw', 'Wroclaw', 'Pologne', 'PL', 51.1079, 17.0385, 2, 'eu', R('Wroclaw Glowny', false), [A('WRO', 'Wroclaw-Copernic', 20)]),
+    P('poznan', 'Poznan', 'Pologne', 'PL', 52.4064, 16.9252, 2, 'eu', R('Poznan Glowny', false), [A('POZ', 'Poznan-Lawica', 20)]),
+    P('riga', 'Riga', 'Lettonie', 'LV', 56.9496, 24.1052, 3, 'eu', R('Riga', false), [A('RIX', 'Riga', 25)]),
+    P('vilnius', 'Vilnius', 'Lituanie', 'LT', 54.6872, 25.2797, 2, 'eu', R('Vilnius', false), [A('VNO', 'Vilnius', 20)]),
+    P('tallinn', 'Tallinn', 'Estonie', 'EE', 59.4370, 24.7536, 2, 'eu', R('Tallinn Balti jaam', false), [A('TLL', 'Tallinn-Lennart Meri', 15)]),
+    P('goteborg', 'Goteborg', 'Suede', 'SE', 57.7089, 11.9746, 3, 'eu', R('Goteborg Centralstation', true), [A('GOT', 'Goteborg-Landvetter', 30)]),
+    P('malmo', 'Malmo', 'Suede', 'SE', 55.6050, 13.0038, 2, 'eu', R('Malmo Centralstation', true), []),
+    P('bergen', 'Bergen', 'Norvege', 'NO', 60.3913, 5.3221, 2, 'eu', R('Bergen stasjon', false), [A('BGO', 'Bergen-Flesland', 25)]),
+    P('aarhus', 'Aarhus', 'Danemark', 'DK', 56.1629, 10.2039, 2, 'eu', R('Aarhus Hovedbanegard', false), [A('AAR', 'Aarhus', 35)]),
+    P('reykjavik', 'Reykjavik', 'Islande', 'IS', 64.1466, -21.9426, 3, 'islande', null, [A('KEF', 'Keflavik', 50)]),
+    P('birmingham', 'Birmingham', 'Royaume-Uni', 'GB', 52.4862, -1.8904, 3, 'gb', R('Birmingham New Street', true), [A('BHX', 'Birmingham', 25)]),
+    P('glasgow', 'Glasgow', 'Royaume-Uni', 'GB', 55.8642, -4.2518, 3, 'gb', R('Glasgow Central', true), [A('GLA', 'Glasgow', 25)]),
+    P('bristol', 'Bristol', 'Royaume-Uni', 'GB', 51.4545, -2.5879, 2, 'gb', R('Bristol Temple Meads', false), [A('BRS', 'Bristol', 25)]),
+    P('belfast', 'Belfast', 'Royaume-Uni', 'GB', 54.5973, -5.9301, 2, 'ie', R('Belfast Lanyon Place', false), [A('BFS', 'Belfast International', 35)]),
+    P('cork', 'Cork', 'Irlande', 'IE', 51.8985, -8.4756, 2, 'ie', R('Cork Kent', false), [A('ORK', 'Cork', 20)]),
+    P('moscou', 'Moscou', 'Russie', 'RU', 55.7558, 37.6173, 4, 'eu', R('Moskva Leningradski', true), [A('SVO', 'Cheremetievo', 50)]),
+    P('kyiv', 'Kyiv', 'Ukraine', 'UA', 50.4501, 30.5234, 3, 'eu', R('Kyiv-Pasazhyrskyi', false), [A('KBP', 'Boryspil', 45)]),
+    /* --- Afrique et Moyen-Orient --- */
+    P('tanger', 'Tanger', 'Maroc', 'MA', 35.7595, -5.8340, 2, 'af', R('Tanger Ville', true), [A('TNG', 'Tanger-Ibn Battouta', 25)]),
+    P('fes', 'Fes', 'Maroc', 'MA', 34.0181, -5.0078, 2, 'af', R('Fes', false), [A('FEZ', 'Fes-Saiss', 20)]),
+    P('agadir', 'Agadir', 'Maroc', 'MA', 30.4278, -9.5981, 2, 'af', null, [A('AGA', 'Agadir-Al Massira', 30)]),
+    P('oran', 'Oran', 'Algerie', 'DZ', 35.6969, -0.6331, 2, 'af', R('Oran', false), [A('ORN', 'Oran-Ahmed Ben Bella', 25)]),
+    P('charm', 'Charm el-Cheikh', 'Egypte', 'EG', 27.9158, 34.3299, 2, 'af', null, [A('SSH', 'Charm el-Cheikh', 20)]),
+    P('doha', 'Doha', 'Qatar', 'QA', 25.2854, 51.5310, 3, 'asie', null, [A('DOH', 'Hamad', 25)]),
+    P('abudhabi', 'Abu Dhabi', 'Emirats arabes unis', 'AE', 24.4539, 54.3773, 3, 'asie', null, [A('AUH', 'Zayed', 35)]),
+    P('riyad', 'Riyad', 'Arabie saoudite', 'SA', 24.7136, 46.6753, 3, 'asie', R('Riyadh', true), [A('RUH', 'Roi-Khaled', 40)]),
+    P('djeddah', 'Djeddah', 'Arabie saoudite', 'SA', 21.4858, 39.1925, 3, 'asie', R('Jeddah Haramain', true), [A('JED', 'Roi-Abdulaziz', 30)]),
+    P('telaviv', 'Tel Aviv', 'Israel', 'IL', 32.0853, 34.7818, 3, 'asie', R('Tel Aviv Savidor', false), [A('TLV', 'Ben Gourion', 30)]),
+    P('amman', 'Amman', 'Jordanie', 'JO', 31.9454, 35.9284, 2, 'asie', null, [A('AMM', 'Reine-Alia', 40)]),
+    P('beyrouth', 'Beyrouth', 'Liban', 'LB', 33.8938, 35.5018, 2, 'asie', null, [A('BEY', 'Rafic-Hariri', 25)]),
+    P('ankara', 'Ankara', 'Turquie', 'TR', 39.9334, 32.8597, 3, 'eu', R('Ankara Gar', true), [A('ESB', 'Esenboga', 45)]),
+    P('izmir', 'Izmir', 'Turquie', 'TR', 38.4237, 27.1428, 3, 'eu', R('Izmir Basmane', false), [A('ADB', 'Adnan-Menderes', 25)]),
+    P('antalya', 'Antalya', 'Turquie', 'TR', 36.8969, 30.7133, 3, 'eu', null, [A('AYT', 'Antalya', 20)]),
+    P('nairobi', 'Nairobi', 'Kenya', 'KE', -1.2921, 36.8219, 3, 'af', R('Nairobi Terminus', false), [A('NBO', 'Jomo-Kenyatta', 40)]),
+    P('lagos', 'Lagos', 'Nigeria', 'NG', 6.5244, 3.3792, 3, 'af', null, [A('LOS', 'Murtala-Muhammed', 45)]),
+    P('abidjan', 'Abidjan', 'Cote d Ivoire', 'CI', 5.3600, -4.0083, 3, 'af', null, [A('ABJ', 'Felix-Houphouet-Boigny', 25)]),
+    P('accra', 'Accra', 'Ghana', 'GH', 5.6037, -0.1870, 2, 'af', null, [A('ACC', 'Kotoka', 25)]),
+    P('addis', 'Addis-Abeba', 'Ethiopie', 'ET', 9.0320, 38.7469, 3, 'af', null, [A('ADD', 'Bole', 30)]),
+    P('lecap', 'Le Cap', 'Afrique du Sud', 'ZA', -33.9249, 18.4241, 3, 'af', R('Cape Town', false), [A('CPT', 'Le Cap', 30)]),
+    P('maurice', 'Port-Louis', 'Maurice', 'MU', -20.1609, 57.5012, 2, 'maurice', null, [A('MRU', 'Sir-Seewoosagur-Ramgoolam', 50)]),
+    P('reunion', 'Saint-Denis', 'La Reunion', 'RE', -20.8789, 55.4481, 2, 'reunion', null, [A('RUN', 'Roland-Garros', 20)]),
+    P('antananarivo', 'Antananarivo', 'Madagascar', 'MG', -18.8792, 47.5079, 2, 'madagascar', null, [A('TNR', 'Ivato', 30)]),
+    /* --- Asie --- */
+    P('bombay', 'Mumbai', 'Inde', 'IN', 19.0760, 72.8777, 4, 'asie', R('Mumbai Central', false), [A('BOM', 'Chhatrapati-Shivaji', 45)]),
+    P('bangalore', 'Bengaluru', 'Inde', 'IN', 12.9716, 77.5946, 4, 'asie', R('Bengaluru', false), [A('BLR', 'Kempegowda', 60)]),
+    P('colombo', 'Colombo', 'Sri Lanka', 'LK', 6.9271, 79.8612, 2, 'srilanka', R('Colombo Fort', false), [A('CMB', 'Bandaranaike', 45)]),
+    P('katmandou', 'Katmandou', 'Nepal', 'NP', 27.7172, 85.3240, 2, 'asie', null, [A('KTM', 'Tribhuvan', 25)]),
+    P('hanoi', 'Hanoi', 'Vietnam', 'VN', 21.0285, 105.8542, 3, 'asie', R('Ha Noi', false), [A('HAN', 'Noi Bai', 40)]),
+    P('hochiminh', 'Ho Chi Minh-Ville', 'Vietnam', 'VN', 10.8231, 106.6297, 3, 'asie', R('Sai Gon', false), [A('SGN', 'Tan Son Nhat', 30)]),
+    P('phnompenh', 'Phnom Penh', 'Cambodge', 'KH', 11.5564, 104.9282, 2, 'asie', null, [A('PNH', 'Phnom Penh', 25)]),
+    P('kualalumpur', 'Kuala Lumpur', 'Malaisie', 'MY', 3.1390, 101.6869, 4, 'asie', R('KL Sentral', true), [A('KUL', 'Kuala Lumpur', 50)]),
+    P('jakarta', 'Jakarta', 'Indonesie', 'ID', -6.2088, 106.8456, 4, 'java', R('Gambir', true), [A('CGK', 'Soekarno-Hatta', 50)]),
+    P('bali', 'Denpasar', 'Indonesie', 'ID', -8.6705, 115.2126, 3, 'bali', null, [A('DPS', 'Ngurah Rai', 25)]),
+    P('manille', 'Manille', 'Philippines', 'PH', 14.5995, 120.9842, 3, 'luzon', null, [A('MNL', 'Ninoy-Aquino', 40)]),
+    P('taipei', 'Taipei', 'Taiwan', 'TW', 25.0330, 121.5654, 4, 'taiwan', R('Taipei', true), [A('TPE', 'Taoyuan', 45)]),
+    P('hongkong', 'Hong Kong', 'Chine', 'HK', 22.3193, 114.1694, 4, 'asie', R('Hong Kong West Kowloon', true), [A('HKG', 'Hong Kong', 40)]),
+    P('pekin', 'Pekin', 'Chine', 'CN', 39.9042, 116.4074, 5, 'asie', R('Beijing Nan', true), [A('PEK', 'Pekin-Capitale', 50)]),
+    P('canton', 'Canton', 'Chine', 'CN', 23.1291, 113.2644, 4, 'asie', R('Guangzhou Nan', true), [A('CAN', 'Baiyun', 45)]),
+    P('chengdu', 'Chengdu', 'Chine', 'CN', 30.5728, 104.0668, 4, 'asie', R('Chengdu Dong', true), [A('CTU', 'Tianfu', 50)]),
+    P('osaka', 'Osaka', 'Japon', 'JP', 34.6937, 135.5023, 4, 'jp', R('Shin-Osaka', true), [A('KIX', 'Kansai', 60)]),
+    P('fukuoka', 'Fukuoka', 'Japon', 'JP', 33.5904, 130.4017, 3, 'jp', R('Hakata', true), [A('FUK', 'Fukuoka', 20)]),
+    P('sapporo', 'Sapporo', 'Japon', 'JP', 43.0618, 141.3545, 3, 'jp', R('Sapporo', true), [A('CTS', 'New Chitose', 45)]),
+    P('busan', 'Busan', 'Coree du Sud', 'KR', 35.1796, 129.0756, 3, 'asie', R('Busan', true), [A('PUS', 'Gimhae', 30)]),
+    /* --- Oceanie --- */
+    P('melbourne', 'Melbourne', 'Australie', 'AU', -37.8136, 144.9631, 4, 'oceanie', R('Southern Cross', false), [A('MEL', 'Melbourne-Tullamarine', 35)]),
+    P('brisbane', 'Brisbane', 'Australie', 'AU', -27.4698, 153.0251, 3, 'oceanie', R('Brisbane Roma Street', false), [A('BNE', 'Brisbane', 30)]),
+    P('perth', 'Perth', 'Australie', 'AU', -31.9505, 115.8605, 3, 'oceanie', R('Perth', false), [A('PER', 'Perth', 30)]),
+    P('auckland', 'Auckland', 'Nouvelle-Zelande', 'NZ', -36.8485, 174.7633, 3, 'nz', R('Auckland Britomart', false), [A('AKL', 'Auckland', 35)]),
+    /* --- Ameriques --- */
+    P('vancouver', 'Vancouver', 'Canada', 'CA', 49.2827, -123.1207, 4, 'am-n', R('Pacific Central', false), [A('YVR', 'Vancouver', 35)]),
+    P('calgary', 'Calgary', 'Canada', 'CA', 51.0447, -114.0719, 3, 'am-n', null, [A('YYC', 'Calgary', 25)]),
+    P('ottawa', 'Ottawa', 'Canada', 'CA', 45.4215, -75.6972, 3, 'am-n', R('Ottawa', false), [A('YOW', 'Ottawa-Macdonald-Cartier', 25)]),
+    P('quebec', 'Quebec', 'Canada', 'CA', 46.8139, -71.2080, 3, 'am-n', R('Gare du Palais', false), [A('YQB', 'Quebec-Jean-Lesage', 25)]),
+    P('chicago', 'Chicago', 'Etats-Unis', 'US', 41.8781, -87.6298, 4, 'am-n', R('Chicago Union Station', false), [A('ORD', 'O Hare', 45)]),
+    P('boston', 'Boston', 'Etats-Unis', 'US', 42.3601, -71.0589, 4, 'am-n', R('Boston South Station', false), [A('BOS', 'Logan', 25)]),
+    P('washington', 'Washington', 'Etats-Unis', 'US', 38.9072, -77.0369, 4, 'am-n', R('Washington Union Station', false), [A('IAD', 'Dulles', 50), A('DCA', 'Reagan National', 25)]),
+    P('atlanta', 'Atlanta', 'Etats-Unis', 'US', 33.7490, -84.3880, 4, 'am-n', null, [A('ATL', 'Hartsfield-Jackson', 30)]),
+    P('dallas', 'Dallas', 'Etats-Unis', 'US', 32.7767, -96.7970, 4, 'am-n', null, [A('DFW', 'Dallas-Fort Worth', 35)]),
+    P('houston', 'Houston', 'Etats-Unis', 'US', 29.7604, -95.3698, 4, 'am-n', null, [A('IAH', 'George-Bush', 40)]),
+    P('denver', 'Denver', 'Etats-Unis', 'US', 39.7392, -104.9903, 3, 'am-n', null, [A('DEN', 'Denver', 45)]),
+    P('seattle', 'Seattle', 'Etats-Unis', 'US', 47.6062, -122.3321, 4, 'am-n', R('King Street Station', false), [A('SEA', 'Seattle-Tacoma', 35)]),
+    P('lasvegas', 'Las Vegas', 'Etats-Unis', 'US', 36.1699, -115.1398, 3, 'am-n', null, [A('LAS', 'Harry-Reid', 20)]),
+    P('orlando', 'Orlando', 'Etats-Unis', 'US', 28.5383, -81.3792, 3, 'am-n', null, [A('MCO', 'Orlando', 30)]),
+    P('cancun', 'Cancun', 'Mexique', 'MX', 21.1619, -86.8515, 3, 'am-n', null, [A('CUN', 'Cancun', 30)]),
+    P('havane', 'La Havane', 'Cuba', 'CU', 23.1136, -82.3666, 2, 'cuba', null, [A('HAV', 'Jose-Marti', 35)]),
+    P('puntacana', 'Punta Cana', 'Republique dominicaine', 'DO', 18.5601, -68.3725, 2, 'hispaniola', null, [A('PUJ', 'Punta Cana', 25)]),
+    P('panama', 'Panama', 'Panama', 'PA', 8.9824, -79.5199, 3, 'am-c', null, [A('PTY', 'Tocumen', 35)]),
+    P('bogota', 'Bogota', 'Colombie', 'CO', 4.7110, -74.0721, 4, 'am-s', null, [A('BOG', 'El Dorado', 45)]),
+    P('lima', 'Lima', 'Perou', 'PE', -12.0464, -77.0428, 4, 'am-s', null, [A('LIM', 'Jorge-Chavez', 40)]),
+    P('santiagochili', 'Santiago', 'Chili', 'CL', -33.4489, -70.6693, 4, 'am-s', R('Estacion Central', false), [A('SCL', 'Arturo-Merino-Benitez', 35)]),
+    P('rio', 'Rio de Janeiro', 'Bresil', 'BR', -22.9068, -43.1729, 4, 'am-s', null, [A('GIG', 'Galeao', 45)]),
+    P('montevideo', 'Montevideo', 'Uruguay', 'UY', -34.9011, -56.1645, 2, 'am-s', null, [A('MVD', 'Carrasco', 30)])
   ];
+
+  /* --- gares supplementaires ------------------------------------------------
+     Gares parisiennes, gares nouvelles a l'ecart des centres (Aix TGV, Lyon
+     Saint-Exupery, Avignon TGV...) et secondes gares des grandes villes. Le
+     moteur retient pour chaque relation la gare la mieux adaptee au service. */
+  T.EXTRA_STATIONS = {
+    paris: [
+      S('Paris Gare de Lyon', 48.8443, 2.3744, true, 18, ['se', 'CH', 'IT', 'ES', 'MC']),
+      S('Paris Gare du Nord', 48.8809, 2.3553, true, 16, ['nord', 'GB', 'BE', 'NL']),
+      S('Paris Montparnasse', 48.8414, 2.3200, true, 18, ['ouest', 'at']),
+      S('Paris Gare de l Est', 48.8768, 2.3592, true, 17, ['est', 'DE', 'LU', 'AT', 'CZ', 'PL', 'HU']),
+      S('Paris Austerlitz', 48.8422, 2.3654, false, 18, ['at']),
+      S('Paris Saint-Lazare', 48.8757, 2.3253, false, 15, ['ouest']),
+      S('Paris Bercy', 48.8395, 2.3822, false, 20, ['se']),
+      S('Marne-la-Vallee Chessy TGV', 48.8697, 2.7828, true, 45),
+      S('Aeroport CDG 2 TGV', 49.0044, 2.5711, true, 50),
+      S('Massy TGV', 48.7256, 2.2611, true, 35)
+    ],
+    lyon: [
+      S('Lyon Part-Dieu', 45.7605, 4.8595, true, 12),
+      S('Lyon Perrache', 45.7492, 4.8261, false, 15),
+      S('Lyon Saint-Exupery TGV', 45.7207, 5.0757, true, 40)
+    ],
+    marseille: [S('Marseille Saint-Charles', 43.3025, 5.3806, true, 12)],
+    avignon: [
+      S('Avignon TGV', 43.9214, 4.7861, true, 20),
+      S('Avignon Centre', 43.9425, 4.8033, false, 10)
+    ],
+    nimes: [
+      S('Nimes Pont-du-Gard', 43.7897, 4.3931, true, 22),
+      S('Nimes Centre', 43.8322, 4.3653, false, 10)
+    ],
+    montpellier: [
+      S('Montpellier Saint-Roch', 43.6047, 3.8803, true, 10),
+      S('Montpellier Sud de France', 43.5800, 3.9264, true, 25)
+    ],
+    valencefr: [
+      S('Valence TGV', 44.9917, 4.9783, true, 20),
+      S('Valence Ville', 44.9264, 4.8944, false, 10)
+    ],
+    aix: [
+      S('Aix-en-Provence TGV', 43.4553, 5.3172, true, 20),
+      S('Aix-en-Provence Centre', 43.5253, 5.4453, false, 10)
+    ],
+    tours: [
+      S('Saint-Pierre-des-Corps', 47.3872, 0.7169, true, 15),
+      S('Tours Centre', 47.3897, 0.6939, false, 8)
+    ],
+    lille: [
+      S('Lille Europe', 50.6394, 3.0758, true, 12),
+      S('Lille Flandres', 50.6367, 3.0703, false, 10)
+    ],
+    reims: [
+      S('Reims Centre', 49.2586, 4.0247, false, 10),
+      S('Champagne-Ardenne TGV', 49.2153, 4.0139, true, 18)
+    ],
+    metz: [
+      S('Metz-Ville', 49.1097, 6.1775, false, 10),
+      S('Lorraine TGV', 48.9472, 6.1694, true, 30)
+    ],
+    besancon: [
+      S('Besancon Viotte', 47.2472, 6.0219, false, 10),
+      S('Besancon Franche-Comte TGV', 47.3078, 5.9556, true, 20)
+    ],
+    poitiers: [S('Poitiers', 46.5817, 0.3331, true, 10)],
+    lemans: [S('Le Mans', 48.0069, 0.1925, true, 10)],
+    londres: [
+      S('London St Pancras International', 51.5320, -0.1264, true, 20, ['FR', 'BE', 'NL', 'DE']),
+      S('London Euston', 51.5282, -0.1337, true, 20, ['gb-ouest']),
+      S('London King s Cross', 51.5308, -0.1238, true, 20, ['gb-est']),
+      S('London Paddington', 51.5154, -0.1755, true, 22, ['gb-sudouest'])
+    ],
+    bruxelles: [
+      S('Bruxelles-Midi', 50.8358, 4.3358, true, 15),
+      S('Bruxelles-Central', 50.8456, 4.3572, false, 12)
+    ],
+    berlin: [
+      S('Berlin Hauptbahnhof', 52.5250, 13.3694, true, 15),
+      S('Berlin Sudkreuz', 52.4756, 13.3653, true, 20)
+    ],
+    munich: [S('Munchen Hauptbahnhof', 48.1403, 11.5583, true, 12)],
+    francfort: [
+      S('Frankfurt Hauptbahnhof', 50.1069, 8.6636, true, 12),
+      S('Frankfurt Flughafen Fernbahnhof', 50.0530, 8.5706, true, 25)
+    ],
+    milan: [
+      S('Milano Centrale', 45.4869, 9.2039, true, 12),
+      S('Milano Porta Garibaldi', 45.4847, 9.1878, true, 12)
+    ],
+    rome: [
+      S('Roma Termini', 41.9011, 12.5019, true, 12),
+      S('Roma Tiburtina', 41.9106, 12.5303, true, 18)
+    ],
+    madrid: [
+      S('Madrid Puerta de Atocha', 40.4067, -3.6906, true, 15),
+      S('Madrid Chamartin', 40.4722, -3.6822, true, 20)
+    ],
+    barcelone: [
+      S('Barcelona Sants', 41.3792, 2.1400, true, 12),
+      S('Barcelona La Sagrera', 41.4200, 2.1900, true, 18)
+    ],
+    zurich: [S('Zurich Hauptbahnhof', 47.3779, 8.5403, true, 10)],
+    amsterdam: [
+      S('Amsterdam Centraal', 52.3789, 4.9003, true, 12),
+      S('Amsterdam Zuid', 52.3389, 4.8731, true, 18)
+    ],
+    naples: [S('Napoli Centrale', 40.8522, 14.2725, true, 12)],
+    turin: [
+      S('Torino Porta Nuova', 45.0619, 7.6783, true, 10),
+      S('Torino Porta Susa', 45.0725, 7.6656, true, 12)
+    ],
+    tokyo: [
+      S('Tokyo', 35.6812, 139.7671, true, 20),
+      S('Shinagawa', 35.6285, 139.7387, true, 20)
+    ],
+    shanghai: [
+      S('Shanghai Hongqiao', 31.1944, 121.3200, true, 40),
+      S('Shanghai', 31.2497, 121.4550, true, 15)
+    ],
+    newyork: [S('New York Penn Station', 40.7506, -73.9936, false, 20)],
+    casablanca: [S('Casa-Voyageurs', 33.5892, -7.5806, true, 15)],
+    tanger: [S('Tanger Ville', 35.7686, -5.7997, true, 15)]
+  };
 
   /* --- axes ferroviaires --------------------------------------------------
      Les reseaux francais et espagnol sont en etoile : une relation est rapide
@@ -853,7 +1167,11 @@ window.TravIA = { STANDALONE: true };
     nantes: 'ouest', angers: 'ouest', rennes: 'ouest', brest: 'ouest',
     caen: 'ouest', rouen: 'ouest', lehavre: 'ouest', orleans: 'ouest',
     lille: 'nord', reims: 'est', metz: 'est', nancy: 'est', strasbourg: 'est',
-    mulhouse: 'est',
+    mulhouse: 'est', calais: 'nord', amiens: 'nord',
+    aix: 'se', valencefr: 'se', poitiers: 'at', lemans: 'ouest', lorient: 'ouest',
+    /* Royaume-Uni : les grandes radiales au depart de Londres */
+    manchester: 'gb-ouest', glasgow: 'gb-ouest', birmingham: 'gb-ouest',
+    edimbourg: 'gb-est', bristol: 'gb-sudouest',
     /* Espagne */
     barcelone: 'es-ne', valencia: 'es-e', seville: 'es-sud', malaga: 'es-sud',
     bilbao: 'es-nord'
@@ -867,7 +1185,15 @@ window.TravIA = { STANDALONE: true };
     { a: 'gb', b: 'ie', car: { extraMin: 220, extraCost: 130, label: 'Ferry Holyhead - Dublin' }, rail: false },
     { a: 'eu', b: 'corse', car: { extraMin: 660, extraCost: 190, label: 'Ferry vers la Corse' }, rail: false },
     { a: 'eu', b: 'baleares', car: { extraMin: 480, extraCost: 175, label: 'Ferry vers les Baleares' }, rail: false },
-    { a: 'eu', b: 'fi', car: { extraMin: 150, extraCost: 90, label: 'Ferry Stockholm - Helsinki' }, rail: false }
+    { a: 'eu', b: 'fi', car: { extraMin: 150, extraCost: 90, label: 'Ferry Stockholm - Helsinki' }, rail: false },
+    { a: 'eu', b: 'sicile', car: { extraMin: 60, extraCost: 55, label: 'Ferry de Messine' }, rail: true },
+    { a: 'eu', b: 'sardaigne', car: { extraMin: 420, extraCost: 160, label: 'Ferry vers la Sardaigne' }, rail: false },
+    { a: 'eu', b: 'malte', car: { extraMin: 300, extraCost: 130, label: 'Ferry vers Malte' }, rail: false },
+    { a: 'eu', b: 'crete', car: { extraMin: 540, extraCost: 120, label: 'Ferry vers la Crete' }, rail: false },
+    { a: 'eu', b: 'ibiza', car: { extraMin: 360, extraCost: 150, label: 'Ferry vers Ibiza' }, rail: false },
+    { a: 'canaries', b: 'canaries-o', car: { extraMin: 150, extraCost: 60, label: 'Ferry inter-iles' }, rail: false },
+    { a: 'am-n', b: 'am-c', car: { extraMin: 0, extraCost: 0, label: 'Route continue' }, rail: false },
+    { a: 'java', b: 'bali', car: { extraMin: 90, extraCost: 25, label: 'Ferry Java - Bali' }, rail: false }
   ];
 
   /* --- operateurs ferroviaires ---------------------------------------------
@@ -1057,9 +1383,108 @@ window.TravIA = { STANDALONE: true };
     return out.slice(0, limit || 8).map(function (o) { return o.place; });
   }
 
+  /* Recherche directe d'une gare ou d'un aeroport par son nom ou son code. */
+  function searchStations(query, limit) {
+    initStations();
+    var q = normalize(query);
+    if (!q) return [];
+    var out = [];
+    T.PLACES.forEach(function (p) {
+      if (!p.rail) return;
+      p.rail.forEach(function (st) {
+        var n = normalize(st.name);
+        var score = n === q ? 0 : n.indexOf(q) === 0 ? 1 : n.indexOf(q) > -1 ? 2 : -1;
+        if (score < 0) return;
+        out.push({ place: p, station: st, score: score - p.weight * 0.1 });
+      });
+    });
+    out.sort(function (a, b) { return a.score - b.score; });
+    return out.slice(0, limit || 6);
+  }
+
+  function searchAirports(query, limit) {
+    var q = normalize(query);
+    if (!q) return [];
+    var out = [];
+    T.PLACES.forEach(function (p) {
+      p.air.forEach(function (a) {
+        var n = normalize(a.name);
+        var score = normalize(a.iata) === q ? 0 : n.indexOf(q) === 0 ? 1 : n.indexOf(q) > -1 ? 2 : -1;
+        if (score < 0) return;
+        out.push({ place: p, airport: a, score: score - p.weight * 0.1 });
+      });
+    });
+    out.sort(function (a, b) { return a.score - b.score; });
+    return out.slice(0, limit || 6);
+  }
+
   function placeById(id) {
     for (var i = 0; i < T.PLACES.length; i++) if (T.PLACES[i].id === id) return T.PLACES[i];
     return null;
+  }
+
+  /* ------------------------------------------------- gares ------------------
+     Chaque ville porte la liste de ses gares. Les coordonnees absentes sont
+     celles du centre-ville ; les gares nouvelles (Aix TGV, Lyon Saint-Exupery)
+     ont les leurs, ce qui change la distance et le temps d'acces. */
+
+  var STATIONS_READY = false;
+  function initStations() {
+    if (STATIONS_READY) return;
+    STATIONS_READY = true;
+    T.PLACES.forEach(function (p) {
+      var list = (T.EXTRA_STATIONS && T.EXTRA_STATIONS[p.id]) || p.rail;
+      if (!list || !list.length) { p.rail = null; return; }
+      p.rail = list.map(function (st) {
+        return {
+          name: st.name,
+          lat: st.lat == null ? p.lat : st.lat,
+          lon: st.lon == null ? p.lon : st.lon,
+          hsr: st.hsr,
+          accessMin: st.accessMin,
+          serves: st.serves || null,
+          city: p.name,
+          cityId: p.id
+        };
+      });
+    });
+  }
+
+  /* Gare retenue pour un service donne : a grande vitesse on privilegie une
+     gare apte, sinon la plus accessible. Une gare choisie explicitement par
+     l'utilisateur l'emporte toujours. */
+  /* Une gare tete de ligne ne dessert qu'une direction : les trains de Paris
+     vers le sud-est partent de la gare de Lyon, pas de la gare du Nord. */
+  function directionPenalty(st, other) {
+    if (!st.serves || !st.serves.length || !other) return 0;
+    if (other.cc && st.serves.indexOf(other.cc) > -1) return -100;
+    var axis = T.RAIL_AXES && T.RAIL_AXES[other.id];
+    if (axis && st.serves.indexOf(axis) > -1) return -100;
+    return 60;
+  }
+
+  function pickStation(place, wantHsr, other) {
+    initStations();
+    var list = place.rail;
+    if (!list || !list.length) return null;
+    if (place.railAnchor) {
+      var forced = list.filter(function (s) { return s.name === place.railAnchor; })[0];
+      if (forced) return forced;
+    }
+    var cands = wantHsr ? list.filter(function (s) { return s.hsr; }) : list.slice();
+    if (!cands.length) cands = list.slice();
+    return cands.slice().sort(function (a, b) {
+      return (directionPenalty(a, other) + a.accessMin) - (directionPenalty(b, other) + b.accessMin);
+    })[0];
+  }
+
+  function stationsHaveHsr(place) {
+    return !!(place.rail && place.rail.some(function (s) { return s.hsr; }));
+  }
+
+  function hasRail(place) {
+    initStations();
+    return !!(place.rail && place.rail.length);
   }
 
   /* ------------------------------------------- continuite terrestre --------- */
@@ -1177,12 +1602,22 @@ window.TravIA = { STANDALONE: true };
     var out = {};
     for (var k in place) if (Object.prototype.hasOwnProperty.call(place, k)) out[k] = place[k];
 
-    if (anchor.type === 'rail' && place.rail) {
-      out.name = place.rail.station;
+    if (anchor.type === 'rail' && hasRail(place)) {
+      var st = anchor.station
+        ? (place.rail.filter(function (s) { return s.name === anchor.station; })[0] || place.rail[0])
+        : place.rail[0];
+      out.name = st.name;
       out.anchor = 'rail';
-      out.rail = { station: place.rail.station, hsr: place.rail.hsr, accessMin: 5, host: place.rail.host };
+      out.railAnchor = st.name;
+      out.rail = place.rail.map(function (s) {
+        return {
+          name: s.name, lat: s.lat, lon: s.lon, hsr: s.hsr, serves: s.serves,
+          city: s.city, cityId: s.cityId,
+          accessMin: s.name === st.name ? 5 : s.accessMin + st.accessMin
+        };
+      });
       out.air = place.air.map(function (a) {
-        return { iata: a.iata, name: a.name, transferMin: a.transferMin + 20, kind: a.kind };
+        return { iata: a.iata, name: a.name, transferMin: a.transferMin + Math.round(st.accessMin * 0.8), kind: a.kind };
       });
       return out;
     }
@@ -1192,12 +1627,14 @@ window.TravIA = { STANDALONE: true };
       out.name = chosen.name + ' (' + chosen.iata + ')';
       out.anchor = 'air';
       out.air = [{ iata: chosen.iata, name: chosen.name, transferMin: 15, kind: chosen.kind }];
-      if (place.rail) {
-        out.rail = {
-          station: place.rail.station, hsr: place.rail.hsr,
-          accessMin: (place.rail.accessMin || 20) + Math.round(chosen.transferMin * 0.8),
-          host: place.rail.host
-        };
+      if (hasRail(place)) {
+        out.rail = place.rail.map(function (s) {
+          return {
+            name: s.name, lat: s.lat, lon: s.lon, hsr: s.hsr, serves: s.serves,
+            city: s.city, cityId: s.cityId,
+            accessMin: s.accessMin + Math.round(chosen.transferMin * 0.8)
+          };
+        });
       }
       return out;
     }
@@ -1383,14 +1820,14 @@ window.TravIA = { STANDALONE: true };
     return 0.62;
   }
 
-  function railSpeed(op, from, to, km) {
+  function railSpeed(op, from, to, km, sA, sB) {
     if (op.night) return 78;
     if (from.cc === to.cc) {
       var classic = km > 400 ? 105 : 92;
       if (!op.hsr) return classic;
       var vHigh = DOMESTIC_HSR[from.cc] || 160;
-      if (from.rail.hsr && to.rail.hsr) return vHigh * axisFactor(from, to);
-      if (from.rail.hsr || to.rail.hsr) {
+      if (sA.hsr && sB.hsr) return vHigh * axisFactor(from, to);
+      if (sA.hsr || sB.hsr) {
         /* une partie du parcours seulement est apte a la grande vitesse */
         var share = Math.min(0.5, km / 700);
         return vHigh * share + classic * (1 - share);
@@ -1444,9 +1881,19 @@ window.TravIA = { STANDALONE: true };
     return Math.round(p / 5) * 5;
   }
 
+  /* Longueur ferroviaire entre deux gares : distance a vol d'oiseau corrigee,
+     plancher donne par le cheminement sur le reseau. */
+  function railKmBetween(from, to, sA, sB) {
+    var geo = haversine(sA, sB);
+    var km = geo * (geo < 300 ? 1.22 : 1.12);
+    var pathKm = networkPathKm(from, to);
+    if (pathKm) km = Math.max(km, pathKm * 1.05);
+    return km;
+  }
+
   function railOffers(from, to, dep, opts, now) {
-    if (!from.rail || !to.rail) {
-      var who = !from.rail ? from.name : to.name;
+    if (!hasRail(from) || !hasRail(to)) {
+      var who = !hasRail(from) ? from.name : to.name;
       return { available: false, reason: 'Pas de desserte ferroviaire identifiee pour ' + who + '.' };
     }
     var link = landLink(from.land, to.land);
@@ -1455,9 +1902,8 @@ window.TravIA = { STANDALONE: true };
     }
     var geo = haversine(from, to);
     if (geo < 15) return { available: false, reason: 'Distance trop courte pour un trajet ferroviaire interurbain.' };
-    var km = geo * (geo < 300 ? 1.22 : 1.12);
-    var pathKm = networkPathKm(from, to);
-    if (pathKm) km = Math.max(km, pathKm * 1.05);
+    var anyHsr = stationsHaveHsr(from) && stationsHaveHsr(to);
+    var km = railKmBetween(from, to, pickStation(from, anyHsr, to), pickStation(to, anyHsr, from));
     var weight = trafficWeight(from, to);
     var classFactor = opts.railClass === '1re' ? 1.52 : 1;
     var card = T.RAIL_CARDS[opts.railCard] || T.RAIL_CARDS.aucune;
@@ -1472,11 +1918,15 @@ window.TravIA = { STANDALONE: true };
       if (!op.hsr && km > 600 && !op.night) return;   /* pas de service classique de bout en bout */
       if (op.lowcost && km < 120) return;
 
-      var speed = railSpeed(op, from, to, km);
-      var transfers = railTransfers(op, from, to, km) + (transit ? 1 : 0);
-      var stops = clamp(Math.round(km / (op.hsr ? 280 : 110)), 0, 12);
+      /* on n'impose une gare a grande vitesse que si l'autre extremite en a une */
+      var sA = pickStation(from, op.hsr && stationsHaveHsr(to), to);
+      var sB = pickStation(to, op.hsr && stationsHaveHsr(from), from);
+      var legKm = railKmBetween(from, to, sA, sB);
+      var speed = railSpeed(op, from, to, legKm, sA, sB);
+      var transfers = railTransfers(op, from, to, legKm) + (transit ? 1 : 0);
+      var stops = clamp(Math.round(legKm / (op.hsr ? 280 : 110)), 0, 12);
       /* 8 minutes forfaitaires : acceleration, approche et manoeuvres en gare */
-      var rideMin = km / speed * 60 + 8 + stops * (op.hsr ? 3 : 2) + transfers * (km > 900 ? 55 : 40);
+      var rideMin = legKm / speed * 60 + 8 + stops * (op.hsr ? 3 : 2) + transfers * (legKm > 900 ? 55 : 40);
       if (op.night) rideMin = Math.max(rideMin, 470);
 
       var seedKey = from.id + '>' + to.id + '|' + op.id + '|' + dep.toDateString();
@@ -1484,8 +1934,8 @@ window.TravIA = { STANDALONE: true };
                                seedKey, weight);
       var laterToday = grid.some(function (g) { return slotDate(dep, g, false) >= dep; });
 
-      var accessMin = from.rail.accessMin != null ? from.rail.accessMin : opts.railTransferMin;
-      var egressMin = to.rail.accessMin != null ? to.rail.accessMin : opts.railTransferMin;
+      var accessMin = sA.accessMin + (from.custom ? 0 : Math.max(0, opts.railTransferMin - 15));
+      var egressMin = sB.accessMin + (to.custom ? 0 : Math.max(0, opts.railTransferMin - 15));
 
       grid.forEach(function (h, i) {
         var d = slotDate(dep, h, false);
@@ -1495,7 +1945,7 @@ window.TravIA = { STANDALONE: true };
         }
         var jitter = 0.86 + rand(seedKey + '|p' + i) * 0.42;
         var yieldFactor = op.lowcost ? 0.95 : 1;
-        var price = (op.base + op.perKm * km) * classFactor * lead * dow * season *
+        var price = (op.base + op.perKm * legKm) * classFactor * lead * dow * season *
                     hourFactor(h) * jitter * yieldFactor * card.factor;
         if (op.night) price = Math.max(price, 49);
         price = Math.max(price, op.lowcost ? 10 : 12);
@@ -1516,10 +1966,12 @@ window.TravIA = { STANDALONE: true };
           night: !!op.night,
           pricePerPerson: priceRound(price),
           price: priceRound(price) * Math.max(1, opts.passengers),
-          distanceKm: round(km, 0),
-          co2PerPerson: round(km * (op.hsr ? T.CO2.railHsr : T.CO2.railRegional) / 1000, 1),
-          fromLabel: from.rail.station,
-          toLabel: to.rail.station,
+          distanceKm: round(legKm, 0),
+          co2PerPerson: round(legKm * (op.hsr ? T.CO2.railHsr : T.CO2.railRegional) / 1000, 1),
+          fromLabel: sA.name,
+          toLabel: sB.name,
+          fromStation: sA,
+          toStation: sB,
           accessMin: accessMin,
           egressMin: egressMin,
           doorToDoorMin: duration + accessMin + egressMin
@@ -1648,6 +2100,8 @@ window.TravIA = { STANDALONE: true };
           toLabel: apB.iata + ' ' + apB.name,
           accessMin: accessMin,
           egressMin: egressMin,
+          accessParts: { toAirport: apA.transferMin, checkin: opts.checkinMin },
+          egressParts: { disembark: opts.disembarkMin, fromAirport: apB.transferMin },
           klass: al.type === 'low' ? 'Economique (sans bagage)' : 'Economique'
         });
       });
@@ -1678,6 +2132,119 @@ window.TravIA = { STANDALONE: true };
     return { available: true, mode: 'plane', source: 'estime', distanceKm: round(km, 0), offers: offers.slice(0, 24) };
   }
 
+  /* ------------------------------------------- deroule du porte a porte -----
+     Detaille ce que recouvre la duree annoncee : acces, attente, trajet, sortie.
+     Chaque etape porte son horaire, de facon a lire le voyage comme un
+     enchainement concret plutot que comme un total abstrait. */
+  function itinerarySteps(leg, mode, service, opts) {
+    if (!service) return [];
+    var steps = [];
+    var t;
+
+    if (mode === 'car') {
+      t = new Date(service.depart.getTime());
+      steps.push({
+        kind: 'ride', label: 'Conduite ' + leg.from.name + ' vers ' + leg.to.name,
+        detail: round(service.distanceKm, 0) + ' km, vitesse moyenne ' +
+          Math.round(service.distanceKm / (service.driveMin / 60)) + ' km/h',
+        min: service.driveMin, start: t,
+        end: new Date(t.getTime() + service.driveMin * MIN)
+      });
+      if (service.breaksMin) {
+        var afterDrive = new Date(t.getTime() + service.driveMin * MIN);
+        steps.push({
+          kind: 'wait', label: 'Pauses reglementaires',
+          detail: 'Une pause de 15 minutes toutes les deux heures de conduite',
+          min: service.breaksMin, start: afterDrive,
+          end: new Date(afterDrive.getTime() + service.breaksMin * MIN)
+        });
+      }
+      if (service.ferry) {
+        var afterAll = new Date(service.arrivee.getTime() - 0);
+        steps.push({
+          kind: 'ride', label: service.ferry, detail: 'Traversee comprise dans le total',
+          min: null, start: null, end: afterAll
+        });
+      }
+      return steps;
+    }
+
+    var access = service.accessMin || 0;
+    t = new Date(service.depart.getTime() - access * MIN);
+
+    if (mode === 'train') {
+      if (access) {
+        steps.push({
+          kind: 'access', label: 'Rejoindre ' + service.fromLabel,
+          detail: 'Depuis ' + leg.from.name + ', trajet local estime',
+          min: access, start: t, end: new Date(service.depart.getTime())
+        });
+      }
+      steps.push({
+        kind: 'ride', label: service.operator + ' — ' + service.fromLabel + ' vers ' + service.toLabel,
+        detail: service.transfers
+          ? service.transfers + ' correspondance' + (service.transfers > 1 ? 's' : '') + ' en cours de route'
+          : 'Trajet direct, ' + round(service.distanceKm, 0) + ' km',
+        min: service.durationMin, start: new Date(service.depart.getTime()),
+        end: new Date(service.arrivee.getTime())
+      });
+      if (service.egressMin) {
+        steps.push({
+          kind: 'egress', label: 'Rejoindre ' + leg.to.name,
+          detail: 'Depuis ' + service.toLabel,
+          min: service.egressMin, start: new Date(service.arrivee.getTime()),
+          end: new Date(service.arrivee.getTime() + service.egressMin * MIN)
+        });
+      }
+      return steps;
+    }
+
+    /* avion */
+    var ap = service.accessParts || { toAirport: access, checkin: 0 };
+    var eg = service.egressParts || { disembark: 0, fromAirport: service.egressMin || 0 };
+    if (ap.toAirport) {
+      steps.push({
+        kind: 'access', label: 'Rejoindre ' + service.fromLabel,
+        detail: 'Depuis ' + leg.from.name,
+        min: ap.toAirport, start: t, end: new Date(t.getTime() + ap.toAirport * MIN)
+      });
+      t = new Date(t.getTime() + ap.toAirport * MIN);
+    }
+    if (ap.checkin) {
+      steps.push({
+        kind: 'wait', label: 'Enregistrement, bagages et surete',
+        detail: 'Delai conseille avant l embarquement',
+        min: ap.checkin, start: t, end: new Date(service.depart.getTime())
+      });
+    }
+    steps.push({
+      kind: 'ride', label: 'Vol ' + (service.code || '') + ' — ' + service.operator,
+      detail: service.transfers
+        ? service.transfers + ' escale' + (service.transfers > 1 ? 's' : '') + ', temps de correspondance compris'
+        : 'Vol direct, ' + round(service.distanceKm, 0) + ' km',
+      min: service.durationMin, start: new Date(service.depart.getTime()),
+      end: new Date(service.arrivee.getTime())
+    });
+    var after = new Date(service.arrivee.getTime());
+    if (eg.disembark) {
+      steps.push({
+        kind: 'wait', label: 'Debarquement et retrait des bagages',
+        detail: null, min: eg.disembark, start: after,
+        end: new Date(after.getTime() + eg.disembark * MIN)
+      });
+      after = new Date(after.getTime() + eg.disembark * MIN);
+    }
+    if (eg.fromAirport) {
+      steps.push({
+        kind: 'egress', label: 'Rejoindre ' + leg.to.name,
+        detail: 'Depuis ' + service.toLabel,
+        min: eg.fromAirport, start: after,
+        end: new Date(after.getTime() + eg.fromAirport * MIN)
+      });
+    }
+    return steps;
+  }
+
   /* --------------------------------------------- synthese d'un segment ------ */
 
   function bestOf(offers, key) {
@@ -1696,6 +2263,63 @@ window.TravIA = { STANDALONE: true };
     res.fastest = fastest;
     res.co2PerPerson = cheapest.co2PerPerson;
     return res;
+  }
+
+  /* Remplace les horaires modelises par des horaires reels quand un service
+     ouvert a pu les fournir. Les elements que l'API ne donne pas (distance,
+     emissions, et le prix sur une partie des relations) restent ceux du
+     modele, et chaque offre porte l'origine de sa donnee. */
+  function applyLiveRail(leg, live, opts) {
+    var res = leg.train;
+    if (!res || !res.available || !live || !live.length) return false;
+    var model = res.offers;
+    var ref = model[0];
+    var pax = Math.max(1, opts.passengers || 1);
+
+    function modelPriceNear(when) {
+      var best = model[0], bestD = Infinity;
+      model.forEach(function (o) {
+        var d = Math.abs(o.depart - when);
+        if (d < bestD) { bestD = d; best = o; }
+      });
+      return best ? best.pricePerPerson : null;
+    }
+
+    var offers = live.map(function (j) {
+      var access = ref.accessMin, egress = ref.egressMin;
+      var priceReal = j.price != null && j.price > 0;
+      var unit = priceReal ? Math.round(j.price * 100) / 100 : modelPriceNear(j.depart);
+      return {
+        mode: 'train',
+        operator: j.operator,
+        company: j.company,
+        url: 'https://www.sncf-connect.com',
+        klass: opts.railClass === '1re' ? '1re classe' : '2de classe',
+        depart: j.depart,
+        arrivee: j.arrivee,
+        durationMin: j.durationMin,
+        transfers: j.transfers,
+        night: false,
+        pricePerPerson: unit,
+        price: unit == null ? null : Math.round(unit * pax * 100) / 100,
+        distanceKm: res.distanceKm,
+        co2PerPerson: round(res.distanceKm * (j.transfers > 2 ? T.CO2.railRegional : T.CO2.railHsr) / 1000, 1),
+        fromLabel: j.fromLabel,
+        toLabel: j.toLabel,
+        accessMin: access,
+        egressMin: egress,
+        doorToDoorMin: j.durationMin + access + egress,
+        source: 'reel',
+        priceSource: priceReal ? 'reel' : 'estime'
+      };
+    }).filter(function (o) { return o.pricePerPerson != null; });
+
+    if (!offers.length) return false;
+    offers.sort(function (a, b) { return a.depart - b.depart; });
+    res.offers = offers;
+    res.source = 'reel';
+    summarizeOffers(res, opts, true);
+    return true;
   }
 
   /* Calcule les trois modes pour un segment donne. */
@@ -1735,12 +2359,16 @@ window.TravIA = { STANDALONE: true };
   /* Construit un lieu a partir d'un point geocode : rattachement a la gare et
      a l'aeroport les plus proches du referentiel, avec le temps d'acces routier. */
   function buildCustomPlace(name, lat, lon, meta) {
+    initStations();
     var pt = { lat: lat, lon: lon };
-    var nearest = null, nearestD = Infinity, railHost = null, railD = Infinity, airHost = null, airD = Infinity;
+    var nearest = null, nearestD = Infinity, railStation = null, railD = Infinity, airHost = null, airD = Infinity;
     T.PLACES.forEach(function (p) {
       var d = haversine(pt, p);
       if (d < nearestD) { nearestD = d; nearest = p; }
-      if (p.rail && d < railD) { railD = d; railHost = p; }
+      if (p.rail) p.rail.forEach(function (st) {
+        var ds = haversine(pt, st);
+        if (ds < railD) { railD = ds; railStation = st; }
+      });
       if (p.air.length && d < airD) { airD = d; airHost = p; }
     });
     if (!nearest) return null;
@@ -1767,13 +2395,14 @@ window.TravIA = { STANDALONE: true };
       place.air = nearest.air;
       return place;
     }
-    if (railHost && railD < 170) {
-      place.rail = {
-        station: railHost.rail.station,
-        hsr: railHost.rail.hsr,
+    if (railStation && railD < 170) {
+      place.rail = [{
+        name: railStation.name,
+        lat: railStation.lat, lon: railStation.lon,
+        hsr: railStation.hsr,
         accessMin: accessMinutes(railD),
-        host: railHost.name
-      };
+        city: railStation.city, cityId: railStation.cityId
+      }];
     }
     if (airHost && airD < 220) {
       var extra = accessMinutes(airD);
@@ -1788,17 +2417,24 @@ window.TravIA = { STANDALONE: true };
     buildCustomPlace: buildCustomPlace,
     networkPath: networkPath,
     anchorPlace: anchorPlace,
+    pickStation: pickStation,
+    hasRail: hasRail,
+    initStations: initStations,
     landLink: landLink,
     haversine: haversine,
     rand: rand,
     hash: hash,
     normalize: normalize,
     searchPlaces: searchPlaces,
+    searchStations: searchStations,
+    searchAirports: searchAirports,
     placeById: placeById,
     estimateCar: estimateCar,
     railOffers: railOffers,
     flightOffers: flightOffers,
     computeLeg: computeLeg,
+    itinerarySteps: itinerarySteps,
+    applyLiveRail: applyLiveRail,
     legDuration: legDuration,
     legPrice: legPrice,
     legCo2: legCo2,
@@ -1903,7 +2539,7 @@ window.TravIA = { STANDALONE: true };
     T.PLACES.forEach(function (h) {
       if (h.id === a.id || h.id === b.id) return;
       if (h.weight < 3) return;
-      if (!h.rail && !h.air.length) return;
+      if (!T.engine.hasRail(h) && !h.air.length) return;
       var d = T.engine.haversine(a, h) + T.engine.haversine(h, b);
       var detour = d / direct;
       if (detour > 1.22) return;
@@ -2199,10 +2835,13 @@ window.TravIA = { STANDALONE: true };
 
     var used = {};
     segments.forEach(function (s) { used[s.mode] = true; });
-    var names = { car: 'Voiture', train: 'Train', plane: 'Avion' };
+    var names = { car: 'Voiture', train: 'Train', plane: 'Avion', pending: 'Itineraire a calculer' };
+    var measured = segments.some(function (s) { return s.measured; });
     legend.innerHTML = Object.keys(names).filter(function (m) { return used[m]; }).map(function (m) {
       return '<span class="map__key map__key--' + m + '"><span class="map__swatch"></span>' + names[m] + '</span>';
-    }).join('') + '<span class="map__key">Trace schematique, points du referentiel en repere</span>';
+    }).join('') + '<span class="map__key">' +
+      (measured ? 'Trace routier mesure sur OpenStreetMap' : 'Trace schematique, villes du referentiel en repere') +
+      '</span>';
   }
 
   T.map = { render: render };
@@ -2259,25 +2898,164 @@ window.TravIA = { STANDALONE: true };
     }).catch(function () { return []; });
   }
 
-  /* Itineraire routier reel. points = [{lat, lon}, ...] dans l'ordre du trajet. */
+  /* Reduit une trace a un nombre de points raisonnable pour l'affichage. */
+  function simplify(coords, maxPoints) {
+    if (coords.length <= maxPoints) return coords;
+    var step = coords.length / maxPoints;
+    var out = [];
+    for (var i = 0; i < coords.length; i += step) out.push(coords[Math.floor(i)]);
+    out.push(coords[coords.length - 1]);
+    return out;
+  }
+
+  function nearestIndex(coords, target) {
+    var best = 0, bestD = Infinity;
+    for (var i = 0; i < coords.length; i++) {
+      var dx = coords[i][0] - target[0], dy = coords[i][1] - target[1];
+      var d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  /* Itineraire routier reel, avec sa geometrie. points = [{lat, lon}, ...]. */
   function route(points) {
     if (!points || points.length < 2) return Promise.resolve(null);
     var coords = points.map(function (p) { return p.lon.toFixed(5) + ',' + p.lat.toFixed(5); }).join(';');
-    var url = OSRM + coords + '?overview=false&alternatives=false&steps=false';
-    return withTimeout(url, 8000).then(function (data) {
+    var url = OSRM + coords + '?overview=full&geometries=geojson&alternatives=false&steps=false';
+    return withTimeout(url, 10000).then(function (data) {
       if (!data || data.code !== 'Ok' || !data.routes || !data.routes.length) return null;
       var r = data.routes[0];
+      var line = (r.geometry && r.geometry.coordinates) || [];
+
+      /* decoupage de la trace aux points de passage */
+      var cuts = [0];
+      (data.waypoints || []).slice(1, -1).forEach(function (w) {
+        cuts.push(nearestIndex(line, w.location));
+      });
+      cuts.push(Math.max(0, line.length - 1));
+
       return {
         distanceKm: r.distance / 1000,
         durationMin: r.duration / 60,
-        legs: (r.legs || []).map(function (l) {
-          return { distanceKm: l.distance / 1000, durationMin: l.duration / 60 };
+        legs: (r.legs || []).map(function (l, i) {
+          var slice = line.length ? line.slice(cuts[i], cuts[i + 1] + 1) : [];
+          return {
+            distanceKm: l.distance / 1000,
+            durationMin: l.duration / 60,
+            coords: simplify(slice, 260).map(function (c) { return { lat: c[1], lon: c[0] }; })
+          };
         })
       };
     }).catch(function () { return null; });
   }
 
-  T.providers = { geocode: geocode, route: route, available: typeof fetch === 'function' };
+  /* ----------------------------------------------- horaires ferroviaires ----
+     Interroge l'API ouverte v6.db.transport.rest, passerelle publique vers le
+     systeme horaire de la Deutsche Bahn. Elle couvre les grands reseaux
+     europeens, sans cle ni compte. Les tarifs ne sont renvoyes que sur une
+     partie des relations ; a defaut, le prix du modele est conserve et
+     signale comme tel. Tout echec bascule sur le modele interne. */
+
+  var RAIL_API = 'https://v6.db.transport.rest';
+  var stopCache = {};
+
+  function railStopId(name, lat, lon) {
+    var key = name + '|' + lat.toFixed(2) + ',' + lon.toFixed(2);
+    if (stopCache[key] !== undefined) return Promise.resolve(stopCache[key]);
+    var url = RAIL_API + '/locations?query=' + encodeURIComponent(name) +
+      '&results=6&stops=true&addresses=false&poi=false&linesOfStops=false';
+    return withTimeout(url, 8000).then(function (rows) {
+      if (!Array.isArray(rows) || !rows.length) { stopCache[key] = null; return null; }
+      var best = null, bestD = Infinity;
+      rows.forEach(function (r) {
+        if (!r || !r.id || !r.location) return;
+        var dLat = r.location.latitude - lat, dLon = (r.location.longitude - lon) * 0.7;
+        var d = dLat * dLat + dLon * dLon;
+        if (d < bestD) { bestD = d; best = r; }
+      });
+      /* au-dela d'environ 60 km, la gare trouvee n'est pas celle demandee */
+      var out = best && bestD < 0.5 ? { id: best.id, name: best.name } : null;
+      stopCache[key] = out;
+      return out;
+    }).catch(function () { stopCache[key] = null; return null; });
+  }
+
+  function isoLocal(d) {
+    function p(n) { return n < 10 ? '0' + n : '' + n; }
+    var off = -d.getTimezoneOffset();
+    var sign = off >= 0 ? '+' : '-';
+    off = Math.abs(off);
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+      p(d.getHours()) + ':' + p(d.getMinutes()) + ':00' +
+      sign + p(Math.floor(off / 60)) + ':' + p(off % 60);
+  }
+
+  /* Renvoie { offers, source } ou { error }. */
+  function railJourneys(fromStation, toStation, when, results) {
+    if (!fromStation || !toStation) return Promise.resolve({ error: 'gare inconnue' });
+    return Promise.all([
+      railStopId(fromStation.name, fromStation.lat, fromStation.lon),
+      railStopId(toStation.name, toStation.lat, toStation.lon)
+    ]).then(function (stops) {
+      if (!stops[0] || !stops[1]) return { error: 'gares non reconnues par le service' };
+      var url = RAIL_API + '/journeys?from=' + encodeURIComponent(stops[0].id) +
+        '&to=' + encodeURIComponent(stops[1].id) +
+        '&departure=' + encodeURIComponent(isoLocal(when)) +
+        '&results=' + (results || 6) +
+        '&stopovers=false&remarks=false&language=fr';
+      return withTimeout(url, 12000).then(function (data) {
+        if (!data || !Array.isArray(data.journeys) || !data.journeys.length) {
+          return { error: 'aucun trajet renvoye' };
+        }
+        var offers = data.journeys.map(function (j) {
+          return normalizeJourney(j, stops[0], stops[1]);
+        }).filter(Boolean);
+        return offers.length ? { offers: offers, source: 'v6.db.transport.rest' }
+                             : { error: 'trajets illisibles' };
+      });
+    }).catch(function (e) {
+      return { error: (e && e.message) || 'service injoignable' };
+    });
+  }
+
+  function normalizeJourney(j, fromStop, toStop) {
+    var legs = (j.legs || []).filter(function (l) { return l && !l.walking; });
+    if (!legs.length) return null;
+    var first = legs[0], last = legs[legs.length - 1];
+    var dep = new Date(first.plannedDeparture || first.departure);
+    var arr = new Date(last.plannedArrival || last.arrival);
+    if (isNaN(dep) || isNaN(arr) || arr <= dep) return null;
+
+    var lines = [];
+    legs.forEach(function (l) {
+      var n = l.line && (l.line.name || l.line.fahrtNr);
+      if (n && lines.indexOf(n) < 0) lines.push(n);
+    });
+    var operator = lines.slice(0, 3).join(' + ') || 'Train';
+    var company = (first.line && first.line.operator && first.line.operator.name) || 'Operateur ferroviaire';
+
+    return {
+      operator: operator,
+      company: company,
+      depart: dep,
+      arrivee: arr,
+      durationMin: Math.round((arr - dep) / 60000),
+      transfers: legs.length - 1,
+      price: j.price && typeof j.price.amount === 'number' ? j.price.amount : null,
+      currency: (j.price && j.price.currency) || 'EUR',
+      fromLabel: (first.origin && first.origin.name) || fromStop.name,
+      toLabel: (last.destination && last.destination.name) || toStop.name,
+      products: legs.map(function (l) { return l.line && l.line.product; })
+    };
+  }
+
+  T.providers = {
+    geocode: geocode,
+    route: route,
+    railJourneys: railJourneys,
+    available: typeof fetch === 'function'
+  };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* assets/app.js */
@@ -2365,6 +3143,9 @@ window.TravIA = { STANDALONE: true };
     busy: false
   };
 
+  /* horaires ferroviaires reels : cache des reponses et diagnostic par segment */
+  var liveRail = { cache: {}, status: {} };
+
   var uid = 0;
   function newStop(query) {
     return { uid: ++uid, query: query || '', place: null, anchor: null, hold: 0 };
@@ -2435,26 +3216,50 @@ window.TravIA = { STANDALONE: true };
      resultats de rue ne sont interroges que si la saisie ressemble a une
      adresse. */
   function localMatches(q) {
-    var out = [];
+    var out = [], seen = {};
+    function push(entry) {
+      var key = entry.label + '|' + entry.place.id;
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(entry);
+    }
+    /* villes correspondantes, avec leurs gares et leurs aeroports */
     E.searchPlaces(q, 4).forEach(function (p) {
-      out.push({
+      push({
         kind: 'local', place: p, anchor: { type: 'city' },
         label: p.name, sub: p.country + ' — centre-ville'
       });
-      if (p.rail) {
-        out.push({
-          kind: 'local', place: p, anchor: { type: 'rail' },
-          label: p.rail.station, sub: 'Gare — ' + p.name
+      (p.rail || []).forEach(function (st) {
+        push({
+          kind: 'local', place: p, anchor: { type: 'rail', station: st.name },
+          label: st.name,
+          sub: 'Gare — ' + p.name + (st.hsr ? ', grande vitesse' : '') + ', acces ' + st.accessMin + ' min'
         });
-      }
+      });
       p.air.forEach(function (a) {
-        out.push({
+        push({
           kind: 'local', place: p, anchor: { type: 'air', iata: a.iata },
-          label: a.name + ' (' + a.iata + ')', sub: 'Aeroport — ' + p.name
+          label: a.name + ' (' + a.iata + ')',
+          sub: 'Aeroport — ' + p.name + ', acces ' + a.transferMin + ' min'
         });
       });
     });
-    return out.slice(0, 9);
+    /* gares et aeroports dont le nom correspond directement */
+    E.searchStations(q, 5).forEach(function (r) {
+      push({
+        kind: 'local', place: r.place, anchor: { type: 'rail', station: r.station.name },
+        label: r.station.name,
+        sub: 'Gare — ' + r.place.name + (r.station.hsr ? ', grande vitesse' : '')
+      });
+    });
+    E.searchAirports(q, 4).forEach(function (r) {
+      push({
+        kind: 'local', place: r.place, anchor: { type: 'air', iata: r.airport.iata },
+        label: r.airport.name + ' (' + r.airport.iata + ')',
+        sub: 'Aeroport — ' + r.place.name
+      });
+    });
+    return out.slice(0, 12);
   }
 
   function looksLikeAddress(q) {
@@ -2562,8 +3367,9 @@ window.TravIA = { STANDALONE: true };
     o.fuelPrice = parseFloat($('#fuelPrice').value) || T.DEFAULTS.fuelPrice;
     o.kwhPer100 = parseFloat($('#kwhPer100').value) || T.DEFAULTS.kwhPer100;
     o.kwhPrice = parseFloat($('#kwhPrice').value) || T.DEFAULTS.kwhPrice;
-    o.occupants = Math.max(1, parseInt($('#occupants').value, 10) || 1);
-    o.tolls = $('#tolls').checked;
+    /* les voyageurs partagent le vehicule : le cout par personne suit leur nombre */
+    o.occupants = o.passengers;
+    o.tolls = $('#tollProfile').value !== 'non';
     o.includeWear = $('#includeWear').checked;
     o.railClass = $('#railClass').value;
     o.railCard = $('#railCard').value;
@@ -2573,6 +3379,7 @@ window.TravIA = { STANDALONE: true };
     o.disembarkMin = parseInt($('#disembarkMin').value, 10) || T.DEFAULTS.disembarkMin;
     o.hold = $('#hold').checked;
     o.useLive = $('#useLive').checked;
+    o.liveRail = $('#liveRail').checked;
     state.modes.car = $('#modeCar').checked;
     state.modes.train = $('#modeTrain').checked;
     state.modes.plane = $('#modePlane').checked;
@@ -2642,8 +3449,7 @@ window.TravIA = { STANDALONE: true };
       if (o.fuelPrice) $('#fuelPrice').value = o.fuelPrice;
       if (o.kwhPer100) $('#kwhPer100').value = o.kwhPer100;
       if (o.kwhPrice) $('#kwhPrice').value = o.kwhPrice;
-      if (o.occupants) $('#occupants').value = o.occupants;
-      $('#tolls').checked = o.tolls !== false;
+      $('#tollProfile').value = o.tolls === false ? 'non' : 'oui';
       $('#includeWear').checked = !!o.includeWear;
       if (o.railClass) $('#railClass').value = o.railClass;
       if (o.railCard) $('#railCard').value = o.railCard;
@@ -2652,6 +3458,7 @@ window.TravIA = { STANDALONE: true };
       if (o.disembarkMin) $('#disembarkMin').value = o.disembarkMin;
       $('#hold').checked = !!o.hold;
       $('#useLive').checked = o.useLive !== false;
+      $('#liveRail').checked = o.liveRail !== false;
     }
     return true;
   }
@@ -2727,6 +3534,11 @@ window.TravIA = { STANDALONE: true };
         pick.mode = defaultMode(leg);
         pick.offer = -1;
       }
+      /* horaires reels deja obtenus pour ce segment : ils remplacent le modele */
+      leg.liveKey = railKey(leg);
+      var live = leg.liveKey && liveRail.cache[leg.liveKey];
+      if (live && live !== 'pending' && live.length) E.applyLiveRail(leg, live, state.opts);
+
       var offers = offersFor(leg, pick.mode);
       if (pick.mode && pick.mode !== 'car') {
         if (pick.offer < 0 || pick.offer >= offers.length) pick.offer = 0;
@@ -2745,6 +3557,61 @@ window.TravIA = { STANDALONE: true };
       }
     }
     return legs;
+  }
+
+  /* Cle stable d'un segment ferroviaire : gares retenues et heure demandee. */
+  function railKey(leg) {
+    if (!leg.train.available || !leg.train.offers.length) return null;
+    var o = leg.train.offers[0];
+    if (!o.fromStation || !o.toStation) return null;
+    return [o.fromStation.name, o.toStation.name, leg.depart.toISOString().slice(0, 13)].join('|');
+  }
+
+  /* Lance les recherches d'horaires reels, puis redessine a leur arrivee. */
+  function fetchLiveRail(legs) {
+    if (!state.opts.useLive || !state.opts.liveRail || !T.providers.available) return;
+    var started = false;
+    legs.slice(0, 3).forEach(function (leg) {
+      var key = leg.liveKey;
+      if (!key || liveRail.cache[key] !== undefined) return;
+      var first = leg.train.offers[0];
+      liveRail.cache[key] = 'pending';
+      liveRail.status[key] = { state: 'pending', label: leg.from.name + ' — ' + leg.to.name };
+      started = true;
+      T.providers.railJourneys(first.fromStation, first.toStation, leg.depart, 6).then(function (res) {
+        if (res && res.offers && res.offers.length) {
+          liveRail.cache[key] = res.offers;
+          liveRail.status[key] = {
+            state: 'ok', label: leg.from.name + ' — ' + leg.to.name,
+            detail: res.offers.length + ' trajets releves', source: res.source
+          };
+        } else {
+          liveRail.cache[key] = null;
+          liveRail.status[key] = {
+            state: 'ko', label: leg.from.name + ' — ' + leg.to.name,
+            detail: (res && res.error) || 'aucun resultat'
+          };
+        }
+        render();
+      });
+    });
+    if (started) renderRailStatus();
+  }
+
+  function renderRailStatus() {
+    var box = $('#railStatus');
+    if (!box) return;
+    var keys = Object.keys(liveRail.status);
+    if (!keys.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = keys.map(function (k) {
+      var st = liveRail.status[k];
+      var text = st.state === 'pending' ? 'recherche des horaires reels'
+        : st.state === 'ok' ? st.detail + ' — source ' + st.source
+        : 'horaires reels indisponibles (' + st.detail + '), repli sur le modele';
+      return '<span class="rail-status rail-status--' + st.state + '">' +
+        esc(st.label) + ' : ' + esc(text) + '</span>';
+    }).join('');
   }
 
   function itineraryTotals(legs) {
@@ -2799,7 +3666,8 @@ window.TravIA = { STANDALONE: true };
       }
       return '<tr class="mode-row mode-row--' + m + '">' +
         '<td><span class="mode-name">' + MODES[m].label + '</span>' +
-        '<span class="mode-sub">' + fmtKm(t.km) + (m === 'car' && state.opts.occupants > 1 ? ' — cout partage a ' + state.opts.occupants : '') + '</span></td>' +
+        '<span class="mode-sub">' + fmtKm(t.km) +
+        (m === 'car' && state.opts.passengers > 1 ? ' — frais partages entre ' + state.opts.passengers + ' voyageurs' : '') + '</span></td>' +
         '<td class="num">' + fmtDur(t.durationMin) + (m === bestDur ? '<span class="flag flag--best">le plus rapide</span>' : '') + '</td>' +
         '<td class="num">' + fmtPrice(Math.round(t.price * 100) / 100) + (m === bestPrice ? '<span class="flag flag--best">le moins cher</span>' : '') + '</td>' +
         '<td class="num">' + fmtCo2(t.co2) + (m === bestCo2 ? '<span class="flag flag--best">le plus sobre</span>' : '') + '</td>' +
@@ -2879,6 +3747,8 @@ window.TravIA = { STANDALONE: true };
         ? esc(o.company + ' — ' + o.klass)
         : esc(o.company + ' — vol ' + o.code);
       var link = (o.transfers ? o.transfers + (mode === 'train' ? ' correspondance' + (o.transfers > 1 ? 's' : '') : ' escale' + (o.transfers > 1 ? 's' : '')) : 'direct');
+      if (o.source === 'reel') tags += '<span class="src-tag">horaire reel</span>';
+      if (o.source === 'reel' && o.priceSource === 'estime') tags += '<span class="src-tag src-tag--model">prix estime</span>';
       return '<tr class="' + (picked ? 'picked' : '') + '">' +
         '<td><input type="radio" class="offer-pick" name="pick-' + dirKey + '-' + leg.index + '" ' +
         'data-dir="' + dirKey + '" data-leg="' + leg.index + '" data-mode="' + mode + '" data-offer="' + idx + '"' + (picked ? ' checked' : '') +
@@ -2912,6 +3782,33 @@ window.TravIA = { STANDALONE: true };
       ' Distance retenue : ' + fmtKm(res.distanceKm) + '. Tarifs estimes par le modele, a verifier aupres de la compagnie.</p>';
   }
 
+  /* Deroule concret du trajet retenu : ce que recouvrent les minutes annoncees. */
+  function timeline(leg, mode, service) {
+    if (!service) return '';
+    var steps = E.itinerarySteps(leg, mode, service, state.opts);
+    if (!steps.length) return '';
+    var total = mode === 'car' ? service.durationMin
+      : (service.doorToDoorMin || service.durationMin);
+    var rows = steps.map(function (st) {
+      return '<li class="tl__row tl__row--' + st.kind + '">' +
+        '<span class="tl__time">' + (st.start ? hhmm(st.start) : '') + '</span>' +
+        '<span class="tl__mark" aria-hidden="true"></span>' +
+        '<span class="tl__body"><b>' + esc(st.label) + '</b>' +
+        '<span>' + (st.min ? fmtDur(st.min) : '') +
+        (st.detail ? (st.min ? ' — ' : '') + esc(st.detail) : '') + '</span></span>' +
+        '</li>';
+    }).join('');
+    var last = steps[steps.length - 1];
+    return '<section class="tl">' +
+      '<h4 class="tl__head">Deroule du trajet retenu' +
+      '<span>' + fmtDur(total) + ' porte a porte, arrivee a ' + (last.end ? hhmm(last.end) : '—') + '</span></h4>' +
+      '<ol class="tl__list">' + rows +
+      '<li class="tl__row tl__row--end"><span class="tl__time">' + (last.end ? hhmm(last.end) : '') + '</span>' +
+      '<span class="tl__mark" aria-hidden="true"></span>' +
+      '<span class="tl__body"><b>Arrivee ' + esc(leg.to.name) + '</b></span></li>' +
+      '</ol></section>';
+  }
+
   function legCard(dirKey, dir, leg, holds) {
     var tabs = MODE_ORDER.map(function (m) {
       var enabled = state.modes[m];
@@ -2930,6 +3827,7 @@ window.TravIA = { STANDALONE: true };
     var body = leg.pick.mode === 'car' ? carPanel(leg)
       : leg.pick.mode ? offersPanel(dirKey, dir, leg, leg.pick.mode)
       : '<p class="unavailable">Aucun mode disponible sur ce segment avec les options retenues.</p>';
+    if (leg.chosen && leg.pick.mode) body += timeline(leg, leg.pick.mode, leg.chosen);
 
     var holdHours = holds[leg.index + 1] || 0;
 
@@ -3022,9 +3920,14 @@ window.TravIA = { STANDALONE: true };
           '<td class="num">' + fmtPrice(s.price) + '</td></tr>';
       }).join('');
       var mixed = opt.steps.some(function (s) { return s.mode === 'car'; }) && opt.steps.length > 1;
+      var deroule = opt.steps.map(function (s) {
+        var pseudoLeg = { from: s.from, to: s.to, depart: s.depart };
+        return timeline(pseudoLeg, s.mode, s);
+      }).join('');
       detail = '<div class="opt__detail"><div class="table-scroll"><table class="grid"><thead><tr>' +
         '<th>Mode</th><th>Segment</th><th class="num">Depart</th><th class="num">Arrivee</th>' +
         '<th class="num">Duree</th><th class="num">Prix</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        deroule +
         '<p class="rsection__note" style="margin-top:10px">' +
         (mixed ? 'Un segment en voiture au milieu d un trajet suppose un vehicule disponible sur place (location ou covoiturage), non compte dans le prix. ' : '') +
         'Temps total hors attente avant le premier depart. ' +
@@ -3062,7 +3965,7 @@ window.TravIA = { STANDALONE: true };
         return '<button type="button" class="sort-btn" data-criterion="' + c[0] + '" aria-pressed="' +
           (state.criterion === c[0] ? 'true' : 'false') + '">' + c[1] + '</button>';
       }).join('') +
-      '<span class="rsection__note">Voiture, train, avion et combinaisons avec une correspondance</span></div>';
+      '<span class="rsection__note">Voiture, train, avion et combinaisons avec une correspondance — horaires du modele</span></div>';
 
     html += bestBlock('out', state.out, state.roundTrip ? 'Aller' : 'Itineraires possibles', dep);
     if (state.roundTrip && state.back.best) {
@@ -3143,12 +4046,33 @@ window.TravIA = { STANDALONE: true };
       });
     }
     var legs = state.out.legs;
-    if (!legs || !legs.length) return null;
-    return legs.map(function (l) {
+    if (!legs || !legs.length) return previewSegments();
+    var route = state.out.route;
+    return legs.map(function (l, i) {
       var mode = l.pick.mode || 'car';
-      var path = mode === 'plane' ? null : (E.networkPath(l.from, l.to) || {}).nodes;
-      return { from: l.from, to: l.to, mode: mode, path: path };
+      var path = null, measured = false;
+      if (mode === 'car' && route && route.legs[i] && route.legs[i].coords && route.legs[i].coords.length > 2) {
+        path = route.legs[i].coords;      /* trace routiere reelle */
+        measured = true;
+      } else if (mode !== 'plane') {
+        path = (E.networkPath(l.from, l.to) || {}).nodes;
+      }
+      return { from: l.from, to: l.to, mode: mode, path: path, measured: measured };
     });
+  }
+
+  /* Avant tout calcul, la carte situe deja les points saisis. */
+  function previewSegments() {
+    var places = state.stops.map(stopPlace).filter(Boolean);
+    if (places.length < 2) return null;
+    var segs = [];
+    for (var i = 0; i < places.length - 1; i++) {
+      segs.push({
+        from: places[i], to: places[i + 1], mode: 'pending',
+        path: (E.networkPath(places[i], places[i + 1]) || {}).nodes
+      });
+    }
+    return segs;
   }
 
   function renderMap() {
@@ -3184,7 +4108,7 @@ window.TravIA = { STANDALONE: true };
       badge(state.stops.length + ' points, ' + state.out.legs.length + ' segment' + (state.out.legs.length > 1 ? 's' : '') +
         (state.roundTrip ? ', aller-retour' : ''), '') +
       badge('Calcule le ' + new Date().toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), '') +
-      '</div>';
+      '</div><div class="rail-status-bar" id="railStatus" hidden></div>';
 
     html += directionBlock('out', state.out, state.out.legs, holdsFor('out'),
       state.roundTrip ? 'Aller' : 'Itineraire', dep);
@@ -3213,6 +4137,8 @@ window.TravIA = { STANDALONE: true };
     }
 
     results.innerHTML = html;
+    renderRailStatus();
+    fetchLiveRail((state.out.legs || []).concat(state.back.legs || []));
 
     all('.tab', results).forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -3405,6 +4331,7 @@ window.TravIA = { STANDALONE: true };
 
     if (global.location.hash === '#meilleur-itineraire') state.tab = 'best';
     syncTabs();
+    renderMap();
 
     $('#addStop').addEventListener('click', function () {
       state.stops.splice(state.stops.length - 1, 0, newStop(''));

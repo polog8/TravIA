@@ -251,6 +251,9 @@ a:hover { text-decoration-color: currentColor; }
 .map-route--car { stroke: var(--car); }
 .map-route--train { stroke: var(--train); }
 .map-route--plane { stroke: var(--plane); stroke-dasharray: 5 4; }
+.map-route--pending { stroke: var(--rule-strong); stroke-dasharray: 3 4; }
+.map__key--pending { color: var(--ink-faint); }
+.map__key--pending .map__swatch { border-top-style: dashed; }
 .map-stop { fill: var(--ink); stroke: var(--surface-alt); stroke-width: 1.5; }
 .map-stop--end { fill: var(--accent); }
 .map-label {
@@ -352,6 +355,18 @@ a:hover { text-decoration-color: currentColor; }
 .badge--live { border-color: var(--train); color: var(--train); }
 .badge--model { border-color: var(--rule-strong); }
 
+.rail-status-bar { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: -8px 0 18px; }
+.rail-status { font-size: 12px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
+.rail-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--rule-strong); flex: none; }
+.rail-status--ok::before { background: var(--train); }
+.rail-status--ko::before { background: var(--alert); }
+.src-tag {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--train); border: 1px solid var(--train); border-radius: var(--radius);
+  padding: 0 4px; margin-left: 6px; white-space: nowrap;
+}
+.src-tag--model { color: var(--ink-faint); border-color: var(--rule-strong); }
+
 table.grid { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); border: 1px solid var(--rule); }
 table.grid th, table.grid td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
 table.grid thead th { font: 600 11px/1.3 var(--sans); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-soft); background: var(--surface-alt); }
@@ -418,6 +433,32 @@ tr.picked { background: var(--accent-wash); }
 
 .more { margin-top: 12px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* deroule du trajet */
+.tl { margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.tl__head {
+  font-family: var(--sans); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-soft); display: flex; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin-bottom: 12px; font-weight: 600;
+}
+.tl__head span { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink-faint); font-size: 12px; }
+.tl__list { list-style: none; margin: 0; padding: 0; }
+.tl__row { display: grid; grid-template-columns: 46px 14px minmax(0, 1fr); gap: 0 10px; align-items: start; }
+.tl__time { font: 12.5px/1.5 var(--mono); color: var(--ink-soft); padding-top: 1px; }
+.tl__mark { position: relative; align-self: stretch; }
+.tl__mark::before {
+  content: ""; position: absolute; left: 50%; top: 6px; width: 7px; height: 7px;
+  margin-left: -3.5px; border-radius: 50%; background: var(--surface);
+  border: 1.5px solid var(--rule-strong);
+}
+.tl__mark::after { content: ""; position: absolute; left: 50%; top: 13px; bottom: -4px; width: 1px; margin-left: -0.5px; background: var(--rule); }
+.tl__row:last-child .tl__mark::after { display: none; }
+.tl__row--ride .tl__mark::before { background: var(--accent); border-color: var(--accent); }
+.tl__row--end .tl__mark::before { background: var(--ink); border-color: var(--ink); }
+.tl__body { padding-bottom: 14px; font-size: 13.5px; min-width: 0; }
+.tl__body b { font-weight: 600; display: block; }
+.tl__body span { display: block; color: var(--ink-soft); font-size: 12.5px; }
+.opt__detail .tl { border-top: 0; padding-top: 6px; }
+
 .breakdown { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; color: var(--ink-soft); display: grid; gap: 4px; max-width: 420px; }
 .breakdown li { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--rule); padding-bottom: 3px; }
 .breakdown li strong { font-weight: 600; color: var(--ink); }

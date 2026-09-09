@@ -68,9 +68,108 @@
     return out.slice(0, limit || 8).map(function (o) { return o.place; });
   }
 
+  /* Recherche directe d'une gare ou d'un aeroport par son nom ou son code. */
+  function searchStations(query, limit) {
+    initStations();
+    var q = normalize(query);
+    if (!q) return [];
+    var out = [];
+    T.PLACES.forEach(function (p) {
+      if (!p.rail) return;
+      p.rail.forEach(function (st) {
+        var n = normalize(st.name);
+        var score = n === q ? 0 : n.indexOf(q) === 0 ? 1 : n.indexOf(q) > -1 ? 2 : -1;
+        if (score < 0) return;
+        out.push({ place: p, station: st, score: score - p.weight * 0.1 });
+      });
+    });
+    out.sort(function (a, b) { return a.score - b.score; });
+    return out.slice(0, limit || 6);
+  }
+
+  function searchAirports(query, limit) {
+    var q = normalize(query);
+    if (!q) return [];
+    var out = [];
+    T.PLACES.forEach(function (p) {
+      p.air.forEach(function (a) {
+        var n = normalize(a.name);
+        var score = normalize(a.iata) === q ? 0 : n.indexOf(q) === 0 ? 1 : n.indexOf(q) > -1 ? 2 : -1;
+        if (score < 0) return;
+        out.push({ place: p, airport: a, score: score - p.weight * 0.1 });
+      });
+    });
+    out.sort(function (a, b) { return a.score - b.score; });
+    return out.slice(0, limit || 6);
+  }
+
   function placeById(id) {
     for (var i = 0; i < T.PLACES.length; i++) if (T.PLACES[i].id === id) return T.PLACES[i];
     return null;
+  }
+
+  /* ------------------------------------------------- gares ------------------
+     Chaque ville porte la liste de ses gares. Les coordonnees absentes sont
+     celles du centre-ville ; les gares nouvelles (Aix TGV, Lyon Saint-Exupery)
+     ont les leurs, ce qui change la distance et le temps d'acces. */
+
+  var STATIONS_READY = false;
+  function initStations() {
+    if (STATIONS_READY) return;
+    STATIONS_READY = true;
+    T.PLACES.forEach(function (p) {
+      var list = (T.EXTRA_STATIONS && T.EXTRA_STATIONS[p.id]) || p.rail;
+      if (!list || !list.length) { p.rail = null; return; }
+      p.rail = list.map(function (st) {
+        return {
+          name: st.name,
+          lat: st.lat == null ? p.lat : st.lat,
+          lon: st.lon == null ? p.lon : st.lon,
+          hsr: st.hsr,
+          accessMin: st.accessMin,
+          serves: st.serves || null,
+          city: p.name,
+          cityId: p.id
+        };
+      });
+    });
+  }
+
+  /* Gare retenue pour un service donne : a grande vitesse on privilegie une
+     gare apte, sinon la plus accessible. Une gare choisie explicitement par
+     l'utilisateur l'emporte toujours. */
+  /* Une gare tete de ligne ne dessert qu'une direction : les trains de Paris
+     vers le sud-est partent de la gare de Lyon, pas de la gare du Nord. */
+  function directionPenalty(st, other) {
+    if (!st.serves || !st.serves.length || !other) return 0;
+    if (other.cc && st.serves.indexOf(other.cc) > -1) return -100;
+    var axis = T.RAIL_AXES && T.RAIL_AXES[other.id];
+    if (axis && st.serves.indexOf(axis) > -1) return -100;
+    return 60;
+  }
+
+  function pickStation(place, wantHsr, other) {
+    initStations();
+    var list = place.rail;
+    if (!list || !list.length) return null;
+    if (place.railAnchor) {
+      var forced = list.filter(function (s) { return s.name === place.railAnchor; })[0];
+      if (forced) return forced;
+    }
+    var cands = wantHsr ? list.filter(function (s) { return s.hsr; }) : list.slice();
+    if (!cands.length) cands = list.slice();
+    return cands.slice().sort(function (a, b) {
+      return (directionPenalty(a, other) + a.accessMin) - (directionPenalty(b, other) + b.accessMin);
+    })[0];
+  }
+
+  function stationsHaveHsr(place) {
+    return !!(place.rail && place.rail.some(function (s) { return s.hsr; }));
+  }
+
+  function hasRail(place) {
+    initStations();
+    return !!(place.rail && place.rail.length);
   }
 
   /* ------------------------------------------- continuite terrestre --------- */
@@ -188,12 +287,22 @@
     var out = {};
     for (var k in place) if (Object.prototype.hasOwnProperty.call(place, k)) out[k] = place[k];
 
-    if (anchor.type === 'rail' && place.rail) {
-      out.name = place.rail.station;
+    if (anchor.type === 'rail' && hasRail(place)) {
+      var st = anchor.station
+        ? (place.rail.filter(function (s) { return s.name === anchor.station; })[0] || place.rail[0])
+        : place.rail[0];
+      out.name = st.name;
       out.anchor = 'rail';
-      out.rail = { station: place.rail.station, hsr: place.rail.hsr, accessMin: 5, host: place.rail.host };
+      out.railAnchor = st.name;
+      out.rail = place.rail.map(function (s) {
+        return {
+          name: s.name, lat: s.lat, lon: s.lon, hsr: s.hsr, serves: s.serves,
+          city: s.city, cityId: s.cityId,
+          accessMin: s.name === st.name ? 5 : s.accessMin + st.accessMin
+        };
+      });
       out.air = place.air.map(function (a) {
-        return { iata: a.iata, name: a.name, transferMin: a.transferMin + 20, kind: a.kind };
+        return { iata: a.iata, name: a.name, transferMin: a.transferMin + Math.round(st.accessMin * 0.8), kind: a.kind };
       });
       return out;
     }
@@ -203,12 +312,14 @@
       out.name = chosen.name + ' (' + chosen.iata + ')';
       out.anchor = 'air';
       out.air = [{ iata: chosen.iata, name: chosen.name, transferMin: 15, kind: chosen.kind }];
-      if (place.rail) {
-        out.rail = {
-          station: place.rail.station, hsr: place.rail.hsr,
-          accessMin: (place.rail.accessMin || 20) + Math.round(chosen.transferMin * 0.8),
-          host: place.rail.host
-        };
+      if (hasRail(place)) {
+        out.rail = place.rail.map(function (s) {
+          return {
+            name: s.name, lat: s.lat, lon: s.lon, hsr: s.hsr, serves: s.serves,
+            city: s.city, cityId: s.cityId,
+            accessMin: s.accessMin + Math.round(chosen.transferMin * 0.8)
+          };
+        });
       }
       return out;
     }
@@ -394,14 +505,14 @@
     return 0.62;
   }
 
-  function railSpeed(op, from, to, km) {
+  function railSpeed(op, from, to, km, sA, sB) {
     if (op.night) return 78;
     if (from.cc === to.cc) {
       var classic = km > 400 ? 105 : 92;
       if (!op.hsr) return classic;
       var vHigh = DOMESTIC_HSR[from.cc] || 160;
-      if (from.rail.hsr && to.rail.hsr) return vHigh * axisFactor(from, to);
-      if (from.rail.hsr || to.rail.hsr) {
+      if (sA.hsr && sB.hsr) return vHigh * axisFactor(from, to);
+      if (sA.hsr || sB.hsr) {
         /* une partie du parcours seulement est apte a la grande vitesse */
         var share = Math.min(0.5, km / 700);
         return vHigh * share + classic * (1 - share);
@@ -455,9 +566,19 @@
     return Math.round(p / 5) * 5;
   }
 
+  /* Longueur ferroviaire entre deux gares : distance a vol d'oiseau corrigee,
+     plancher donne par le cheminement sur le reseau. */
+  function railKmBetween(from, to, sA, sB) {
+    var geo = haversine(sA, sB);
+    var km = geo * (geo < 300 ? 1.22 : 1.12);
+    var pathKm = networkPathKm(from, to);
+    if (pathKm) km = Math.max(km, pathKm * 1.05);
+    return km;
+  }
+
   function railOffers(from, to, dep, opts, now) {
-    if (!from.rail || !to.rail) {
-      var who = !from.rail ? from.name : to.name;
+    if (!hasRail(from) || !hasRail(to)) {
+      var who = !hasRail(from) ? from.name : to.name;
       return { available: false, reason: 'Pas de desserte ferroviaire identifiee pour ' + who + '.' };
     }
     var link = landLink(from.land, to.land);
@@ -466,9 +587,8 @@
     }
     var geo = haversine(from, to);
     if (geo < 15) return { available: false, reason: 'Distance trop courte pour un trajet ferroviaire interurbain.' };
-    var km = geo * (geo < 300 ? 1.22 : 1.12);
-    var pathKm = networkPathKm(from, to);
-    if (pathKm) km = Math.max(km, pathKm * 1.05);
+    var anyHsr = stationsHaveHsr(from) && stationsHaveHsr(to);
+    var km = railKmBetween(from, to, pickStation(from, anyHsr, to), pickStation(to, anyHsr, from));
     var weight = trafficWeight(from, to);
     var classFactor = opts.railClass === '1re' ? 1.52 : 1;
     var card = T.RAIL_CARDS[opts.railCard] || T.RAIL_CARDS.aucune;
@@ -483,11 +603,15 @@
       if (!op.hsr && km > 600 && !op.night) return;   /* pas de service classique de bout en bout */
       if (op.lowcost && km < 120) return;
 
-      var speed = railSpeed(op, from, to, km);
-      var transfers = railTransfers(op, from, to, km) + (transit ? 1 : 0);
-      var stops = clamp(Math.round(km / (op.hsr ? 280 : 110)), 0, 12);
+      /* on n'impose une gare a grande vitesse que si l'autre extremite en a une */
+      var sA = pickStation(from, op.hsr && stationsHaveHsr(to), to);
+      var sB = pickStation(to, op.hsr && stationsHaveHsr(from), from);
+      var legKm = railKmBetween(from, to, sA, sB);
+      var speed = railSpeed(op, from, to, legKm, sA, sB);
+      var transfers = railTransfers(op, from, to, legKm) + (transit ? 1 : 0);
+      var stops = clamp(Math.round(legKm / (op.hsr ? 280 : 110)), 0, 12);
       /* 8 minutes forfaitaires : acceleration, approche et manoeuvres en gare */
-      var rideMin = km / speed * 60 + 8 + stops * (op.hsr ? 3 : 2) + transfers * (km > 900 ? 55 : 40);
+      var rideMin = legKm / speed * 60 + 8 + stops * (op.hsr ? 3 : 2) + transfers * (legKm > 900 ? 55 : 40);
       if (op.night) rideMin = Math.max(rideMin, 470);
 
       var seedKey = from.id + '>' + to.id + '|' + op.id + '|' + dep.toDateString();
@@ -495,8 +619,8 @@
                                seedKey, weight);
       var laterToday = grid.some(function (g) { return slotDate(dep, g, false) >= dep; });
 
-      var accessMin = from.rail.accessMin != null ? from.rail.accessMin : opts.railTransferMin;
-      var egressMin = to.rail.accessMin != null ? to.rail.accessMin : opts.railTransferMin;
+      var accessMin = sA.accessMin + (from.custom ? 0 : Math.max(0, opts.railTransferMin - 15));
+      var egressMin = sB.accessMin + (to.custom ? 0 : Math.max(0, opts.railTransferMin - 15));
 
       grid.forEach(function (h, i) {
         var d = slotDate(dep, h, false);
@@ -506,7 +630,7 @@
         }
         var jitter = 0.86 + rand(seedKey + '|p' + i) * 0.42;
         var yieldFactor = op.lowcost ? 0.95 : 1;
-        var price = (op.base + op.perKm * km) * classFactor * lead * dow * season *
+        var price = (op.base + op.perKm * legKm) * classFactor * lead * dow * season *
                     hourFactor(h) * jitter * yieldFactor * card.factor;
         if (op.night) price = Math.max(price, 49);
         price = Math.max(price, op.lowcost ? 10 : 12);
@@ -527,10 +651,12 @@
           night: !!op.night,
           pricePerPerson: priceRound(price),
           price: priceRound(price) * Math.max(1, opts.passengers),
-          distanceKm: round(km, 0),
-          co2PerPerson: round(km * (op.hsr ? T.CO2.railHsr : T.CO2.railRegional) / 1000, 1),
-          fromLabel: from.rail.station,
-          toLabel: to.rail.station,
+          distanceKm: round(legKm, 0),
+          co2PerPerson: round(legKm * (op.hsr ? T.CO2.railHsr : T.CO2.railRegional) / 1000, 1),
+          fromLabel: sA.name,
+          toLabel: sB.name,
+          fromStation: sA,
+          toStation: sB,
           accessMin: accessMin,
           egressMin: egressMin,
           doorToDoorMin: duration + accessMin + egressMin
@@ -659,6 +785,8 @@
           toLabel: apB.iata + ' ' + apB.name,
           accessMin: accessMin,
           egressMin: egressMin,
+          accessParts: { toAirport: apA.transferMin, checkin: opts.checkinMin },
+          egressParts: { disembark: opts.disembarkMin, fromAirport: apB.transferMin },
           klass: al.type === 'low' ? 'Economique (sans bagage)' : 'Economique'
         });
       });
@@ -689,6 +817,119 @@
     return { available: true, mode: 'plane', source: 'estime', distanceKm: round(km, 0), offers: offers.slice(0, 24) };
   }
 
+  /* ------------------------------------------- deroule du porte a porte -----
+     Detaille ce que recouvre la duree annoncee : acces, attente, trajet, sortie.
+     Chaque etape porte son horaire, de facon a lire le voyage comme un
+     enchainement concret plutot que comme un total abstrait. */
+  function itinerarySteps(leg, mode, service, opts) {
+    if (!service) return [];
+    var steps = [];
+    var t;
+
+    if (mode === 'car') {
+      t = new Date(service.depart.getTime());
+      steps.push({
+        kind: 'ride', label: 'Conduite ' + leg.from.name + ' vers ' + leg.to.name,
+        detail: round(service.distanceKm, 0) + ' km, vitesse moyenne ' +
+          Math.round(service.distanceKm / (service.driveMin / 60)) + ' km/h',
+        min: service.driveMin, start: t,
+        end: new Date(t.getTime() + service.driveMin * MIN)
+      });
+      if (service.breaksMin) {
+        var afterDrive = new Date(t.getTime() + service.driveMin * MIN);
+        steps.push({
+          kind: 'wait', label: 'Pauses reglementaires',
+          detail: 'Une pause de 15 minutes toutes les deux heures de conduite',
+          min: service.breaksMin, start: afterDrive,
+          end: new Date(afterDrive.getTime() + service.breaksMin * MIN)
+        });
+      }
+      if (service.ferry) {
+        var afterAll = new Date(service.arrivee.getTime() - 0);
+        steps.push({
+          kind: 'ride', label: service.ferry, detail: 'Traversee comprise dans le total',
+          min: null, start: null, end: afterAll
+        });
+      }
+      return steps;
+    }
+
+    var access = service.accessMin || 0;
+    t = new Date(service.depart.getTime() - access * MIN);
+
+    if (mode === 'train') {
+      if (access) {
+        steps.push({
+          kind: 'access', label: 'Rejoindre ' + service.fromLabel,
+          detail: 'Depuis ' + leg.from.name + ', trajet local estime',
+          min: access, start: t, end: new Date(service.depart.getTime())
+        });
+      }
+      steps.push({
+        kind: 'ride', label: service.operator + ' — ' + service.fromLabel + ' vers ' + service.toLabel,
+        detail: service.transfers
+          ? service.transfers + ' correspondance' + (service.transfers > 1 ? 's' : '') + ' en cours de route'
+          : 'Trajet direct, ' + round(service.distanceKm, 0) + ' km',
+        min: service.durationMin, start: new Date(service.depart.getTime()),
+        end: new Date(service.arrivee.getTime())
+      });
+      if (service.egressMin) {
+        steps.push({
+          kind: 'egress', label: 'Rejoindre ' + leg.to.name,
+          detail: 'Depuis ' + service.toLabel,
+          min: service.egressMin, start: new Date(service.arrivee.getTime()),
+          end: new Date(service.arrivee.getTime() + service.egressMin * MIN)
+        });
+      }
+      return steps;
+    }
+
+    /* avion */
+    var ap = service.accessParts || { toAirport: access, checkin: 0 };
+    var eg = service.egressParts || { disembark: 0, fromAirport: service.egressMin || 0 };
+    if (ap.toAirport) {
+      steps.push({
+        kind: 'access', label: 'Rejoindre ' + service.fromLabel,
+        detail: 'Depuis ' + leg.from.name,
+        min: ap.toAirport, start: t, end: new Date(t.getTime() + ap.toAirport * MIN)
+      });
+      t = new Date(t.getTime() + ap.toAirport * MIN);
+    }
+    if (ap.checkin) {
+      steps.push({
+        kind: 'wait', label: 'Enregistrement, bagages et surete',
+        detail: 'Delai conseille avant l embarquement',
+        min: ap.checkin, start: t, end: new Date(service.depart.getTime())
+      });
+    }
+    steps.push({
+      kind: 'ride', label: 'Vol ' + (service.code || '') + ' — ' + service.operator,
+      detail: service.transfers
+        ? service.transfers + ' escale' + (service.transfers > 1 ? 's' : '') + ', temps de correspondance compris'
+        : 'Vol direct, ' + round(service.distanceKm, 0) + ' km',
+      min: service.durationMin, start: new Date(service.depart.getTime()),
+      end: new Date(service.arrivee.getTime())
+    });
+    var after = new Date(service.arrivee.getTime());
+    if (eg.disembark) {
+      steps.push({
+        kind: 'wait', label: 'Debarquement et retrait des bagages',
+        detail: null, min: eg.disembark, start: after,
+        end: new Date(after.getTime() + eg.disembark * MIN)
+      });
+      after = new Date(after.getTime() + eg.disembark * MIN);
+    }
+    if (eg.fromAirport) {
+      steps.push({
+        kind: 'egress', label: 'Rejoindre ' + leg.to.name,
+        detail: 'Depuis ' + service.toLabel,
+        min: eg.fromAirport, start: after,
+        end: new Date(after.getTime() + eg.fromAirport * MIN)
+      });
+    }
+    return steps;
+  }
+
   /* --------------------------------------------- synthese d'un segment ------ */
 
   function bestOf(offers, key) {
@@ -707,6 +948,63 @@
     res.fastest = fastest;
     res.co2PerPerson = cheapest.co2PerPerson;
     return res;
+  }
+
+  /* Remplace les horaires modelises par des horaires reels quand un service
+     ouvert a pu les fournir. Les elements que l'API ne donne pas (distance,
+     emissions, et le prix sur une partie des relations) restent ceux du
+     modele, et chaque offre porte l'origine de sa donnee. */
+  function applyLiveRail(leg, live, opts) {
+    var res = leg.train;
+    if (!res || !res.available || !live || !live.length) return false;
+    var model = res.offers;
+    var ref = model[0];
+    var pax = Math.max(1, opts.passengers || 1);
+
+    function modelPriceNear(when) {
+      var best = model[0], bestD = Infinity;
+      model.forEach(function (o) {
+        var d = Math.abs(o.depart - when);
+        if (d < bestD) { bestD = d; best = o; }
+      });
+      return best ? best.pricePerPerson : null;
+    }
+
+    var offers = live.map(function (j) {
+      var access = ref.accessMin, egress = ref.egressMin;
+      var priceReal = j.price != null && j.price > 0;
+      var unit = priceReal ? Math.round(j.price * 100) / 100 : modelPriceNear(j.depart);
+      return {
+        mode: 'train',
+        operator: j.operator,
+        company: j.company,
+        url: 'https://www.sncf-connect.com',
+        klass: opts.railClass === '1re' ? '1re classe' : '2de classe',
+        depart: j.depart,
+        arrivee: j.arrivee,
+        durationMin: j.durationMin,
+        transfers: j.transfers,
+        night: false,
+        pricePerPerson: unit,
+        price: unit == null ? null : Math.round(unit * pax * 100) / 100,
+        distanceKm: res.distanceKm,
+        co2PerPerson: round(res.distanceKm * (j.transfers > 2 ? T.CO2.railRegional : T.CO2.railHsr) / 1000, 1),
+        fromLabel: j.fromLabel,
+        toLabel: j.toLabel,
+        accessMin: access,
+        egressMin: egress,
+        doorToDoorMin: j.durationMin + access + egress,
+        source: 'reel',
+        priceSource: priceReal ? 'reel' : 'estime'
+      };
+    }).filter(function (o) { return o.pricePerPerson != null; });
+
+    if (!offers.length) return false;
+    offers.sort(function (a, b) { return a.depart - b.depart; });
+    res.offers = offers;
+    res.source = 'reel';
+    summarizeOffers(res, opts, true);
+    return true;
   }
 
   /* Calcule les trois modes pour un segment donne. */
@@ -746,12 +1044,16 @@
   /* Construit un lieu a partir d'un point geocode : rattachement a la gare et
      a l'aeroport les plus proches du referentiel, avec le temps d'acces routier. */
   function buildCustomPlace(name, lat, lon, meta) {
+    initStations();
     var pt = { lat: lat, lon: lon };
-    var nearest = null, nearestD = Infinity, railHost = null, railD = Infinity, airHost = null, airD = Infinity;
+    var nearest = null, nearestD = Infinity, railStation = null, railD = Infinity, airHost = null, airD = Infinity;
     T.PLACES.forEach(function (p) {
       var d = haversine(pt, p);
       if (d < nearestD) { nearestD = d; nearest = p; }
-      if (p.rail && d < railD) { railD = d; railHost = p; }
+      if (p.rail) p.rail.forEach(function (st) {
+        var ds = haversine(pt, st);
+        if (ds < railD) { railD = ds; railStation = st; }
+      });
       if (p.air.length && d < airD) { airD = d; airHost = p; }
     });
     if (!nearest) return null;
@@ -778,13 +1080,14 @@
       place.air = nearest.air;
       return place;
     }
-    if (railHost && railD < 170) {
-      place.rail = {
-        station: railHost.rail.station,
-        hsr: railHost.rail.hsr,
+    if (railStation && railD < 170) {
+      place.rail = [{
+        name: railStation.name,
+        lat: railStation.lat, lon: railStation.lon,
+        hsr: railStation.hsr,
         accessMin: accessMinutes(railD),
-        host: railHost.name
-      };
+        city: railStation.city, cityId: railStation.cityId
+      }];
     }
     if (airHost && airD < 220) {
       var extra = accessMinutes(airD);
@@ -799,17 +1102,24 @@
     buildCustomPlace: buildCustomPlace,
     networkPath: networkPath,
     anchorPlace: anchorPlace,
+    pickStation: pickStation,
+    hasRail: hasRail,
+    initStations: initStations,
     landLink: landLink,
     haversine: haversine,
     rand: rand,
     hash: hash,
     normalize: normalize,
     searchPlaces: searchPlaces,
+    searchStations: searchStations,
+    searchAirports: searchAirports,
     placeById: placeById,
     estimateCar: estimateCar,
     railOffers: railOffers,
     flightOffers: flightOffers,
     computeLeg: computeLeg,
+    itinerarySteps: itinerarySteps,
+    applyLiveRail: applyLiveRail,
     legDuration: legDuration,
     legPrice: legPrice,
     legCo2: legCo2,

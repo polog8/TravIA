@@ -150,10 +150,13 @@
 
     var used = {};
     segments.forEach(function (s) { used[s.mode] = true; });
-    var names = { car: 'Voiture', train: 'Train', plane: 'Avion' };
+    var names = { car: 'Voiture', train: 'Train', plane: 'Avion', pending: 'Itineraire a calculer' };
+    var measured = segments.some(function (s) { return s.measured; });
     legend.innerHTML = Object.keys(names).filter(function (m) { return used[m]; }).map(function (m) {
       return '<span class="map__key map__key--' + m + '"><span class="map__swatch"></span>' + names[m] + '</span>';
-    }).join('') + '<span class="map__key">Trace schematique, points du referentiel en repere</span>';
+    }).join('') + '<span class="map__key">' +
+      (measured ? 'Trace routier mesure sur OpenStreetMap' : 'Trace schematique, villes du referentiel en repere') +
+      '</span>';
   }
 
   T.map = { render: render };
